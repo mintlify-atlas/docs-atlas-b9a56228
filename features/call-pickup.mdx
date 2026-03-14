@@ -1,0 +1,407 @@
+---
+title: Call Pickup
+description: Configure call pickup functionality in Asterisk PBX to answer calls ringing on other extensions
+---
+
+# Call Pickup (Captura de llamada)
+
+Call pickup allows users to answer calls that are ringing on other extensions. This is useful in office environments where you can "grab" a call ringing at a colleague's desk without having to physically go there.
+
+## Overview
+
+Call pickup enables:
+- Answering calls ringing on other extensions
+- Group-based pickup permissions
+- Selective pickup by extension number
+- Department-level call handling
+
+## Use Case
+
+In a department with many phones, when someone calls a specific extension but that person is away, a colleague can dial a pickup code + extension to answer the call from their own phone.
+
+## Call Groups and Pickup Groups
+
+Asterisk uses two concepts:
+
+- **callgroup** - The group this device belongs to
+- **pickupgroup** - The groups this device can pickup from
+
+## Configuration
+
+<Steps>
+
+### Check default pickup code
+
+The default pickup extension is defined in `features.conf`:
+
+```bash
+sudo vim /etc/asterisk/features.conf
+```
+
+Look for:
+```ini
+[featuremap]
+pickup => *8
+```
+
+This means you dial `*8` + extension to pickup.
+
+You can also check from CLI:
+```
+CLI> features show
+```
+
+### Create a director user
+
+Add a supervisor/director who can pickup calls from employees:
+
+```bash
+sudo vim /etc/asterisk/sip.conf
+```
+
+```ini
+[director]
+type=friend
+secret=130261
+context=direccion
+host=dynamic
+canreinvite=no
+nat=force_rport,comedia
+callgroup=1
+pickupgroup=1,2
+```
+
+### Configure employee pickup groups
+
+Update existing employees with call group settings:
+
+```ini
+[javier]
+type=friend
+secret=310195
+context=empleado
+host=dynamic
+canreinvite=no
+nat=force_rport,comedia
+callgroup=2
+pickupgroup=2
+
+[belen]
+type=friend
+secret=120995
+context=empleado
+host=dynamic
+canreinvite=no
+nat=force_rport,comedia
+callgroup=2
+pickupgroup=2
+```
+
+**Explanation:**
+- **Javier and Belen** - In group 2, can pickup from group 2
+- **Director** - In group 1, can pickup from groups 1 and 2
+- Employees can pickup each other's calls
+- Director can pickup all calls (groups 1 and 2)
+- Employees cannot pickup director's calls
+
+### Add pickup to dial plan (empleado context)
+
+Edit extensions.conf:
+
+```bash
+sudo vim /etc/asterisk/extensions.conf
+```
+
+Add pickup functionality:
+
+```ini
+[empleado]
+;####-Extensiones habilitadas-####
+exten => 4000,1,NoOp(Llamando a Javier)
+same => n,Dial(SIP/javier,15)
+same => n,VoiceMail(${EXTEN})
+same => n,Hangup()
+
+exten => 4001,1,NoOp(Llamando a Belen)
+same => n,Dial(SIP/belen,15)
+same => n,VoiceMail(${EXTEN})
+same => n,Hangup()
+
+;####-Captura de llamadas-####
+exten => _*8.,1,NoOp(Capturando llamada a la extension ${EXTEN:2})
+same => n,Pickup(${EXTEN:2})
+same => n,Hangup()
+```
+
+### Add pickup to dial plan (direccion context)
+
+```ini
+[direccion]
+;####-Extensiones habilitadas-####
+exten => 4000,1,NoOp(Llamando a Javier)
+same => n,Dial(SIP/javier,15)
+same => n,VoiceMail(${EXTEN})
+same => n,Hangup()
+
+exten => 4001,1,NoOp(Llamando a Belen)
+same => n,Dial(SIP/belen,15)
+same => n,VoiceMail(${EXTEN})
+same => n,Hangup()
+
+;####-Captura de llamadas-####
+exten => _*8.,1,NoOp(Capturando llamada a la extension ${EXTEN:2})
+same => n,Pickup(${EXTEN:2}@empleado)
+same => n,Hangup()
+```
+
+Note the director can pickup from `@empleado` context.
+
+### Reload configuration
+
+```
+CLI> dialplan reload
+CLI> sip reload
+```
+
+</Steps>
+
+## How It Works
+
+### Pattern Matching
+
+```ini
+exten => _*8.,1,NoOp(Capturando llamada a la extension ${EXTEN:2})
+```
+
+- `_*8.` - Pattern matches `*8` followed by any digits
+- `${EXTEN:2}` - Strips first 2 characters (*8) to get extension number
+
+### Pickup Function
+
+```ini
+Pickup(${EXTEN:2})
+```
+
+Attempts to pickup a call ringing at the specified extension.
+
+```ini
+Pickup(${EXTEN:2}@empleado)
+```
+
+Pickup from a specific context (for cross-context pickup).
+
+## Complete Configuration Example
+
+### sip.conf
+
+```ini
+[general]
+port=5060
+directmedia=no
+language=es
+context=public
+
+[javier]
+type=friend
+secret=310195
+context=empleado
+host=dynamic
+canreinvite=no
+nat=force_rport,comedia
+callgroup=2
+pickupgroup=2
+
+[belen]
+type=friend
+secret=120995
+context=empleado
+host=dynamic
+canreinvite=no
+nat=force_rport,comedia
+callgroup=2
+pickupgroup=2
+
+[director]
+type=friend
+secret=130261
+context=direccion
+host=dynamic
+canreinvite=no
+nat=force_rport,comedia
+callgroup=1
+pickupgroup=1,2
+```
+
+### extensions.conf
+
+```ini
+[empleado]
+exten => 4000,1,NoOp(Llamando a Javier)
+same => n,Dial(SIP/javier,15)
+same => n,VoiceMail(${EXTEN})
+same => n,Hangup()
+
+exten => 4001,1,NoOp(Llamando a Belen)
+same => n,Dial(SIP/belen,15)
+same => n,VoiceMail(${EXTEN})
+same => n,Hangup()
+
+exten => _*8.,1,NoOp(Capturando llamada a la extension ${EXTEN:2})
+same => n,Pickup(${EXTEN:2})
+same => n,Hangup()
+
+[direccion]
+exten => 4000,1,NoOp(Llamando a Javier)
+same => n,Dial(SIP/javier,15)
+same => n,VoiceMail(${EXTEN})
+same => n,Hangup()
+
+exten => 4001,1,NoOp(Llamando a Belen)
+same => n,Dial(SIP/belen,15)
+same => n,VoiceMail(${EXTEN})
+same => n,Hangup()
+
+exten => 5000,1,NoOp(Llamando al director)
+same => n,Dial(SIP/director,15)
+same => n,Hangup()
+
+exten => _*8.,1,NoOp(Capturando llamada a la extension ${EXTEN:2})
+same => n,Pickup(${EXTEN:2}@empleado)
+same => n,Hangup()
+```
+
+## Usage Examples
+
+### Example 1: Employee picking up colleague's call
+
+<Steps>
+
+1. Oscar calls Belen (4001)
+2. Belen's phone rings
+3. Javier dials `*84001`
+4. Javier's phone picks up the call
+5. Belen's phone stops ringing
+6. Javier and Oscar are connected
+
+</Steps>
+
+**Console output:**
+```
+-- Executing [4001@empleado:1] NoOp("SIP/oscar-00000001", "Llamando a Belen")
+-- Executing [4001@empleado:2] Dial("SIP/oscar-00000001", "SIP/belen,15")
+-- Called SIP/belen
+-- SIP/belen-00000002 is ringing
+-- Executing [*84001@empleado:1] NoOp("SIP/javier-00000003", "Capturando llamada a la extension 4001")
+-- Executing [*84001@empleado:2] Pickup("SIP/javier-00000003", "4001")
+-- SIP/javier-00000003 picked up SIP/belen-00000002
+```
+
+### Example 2: Director picking up employee call
+
+Director can pickup from group 2 (employees):
+
+<Steps>
+
+1. Oscar calls Javier (4000)
+2. Javier's phone rings
+3. Director dials `*84000`
+4. Director's phone picks up the call
+5. Javier's phone stops ringing
+
+</Steps>
+
+### Example 3: Employee trying to pickup director (FAILS)
+
+Javier tries to pickup director's call:
+
+<Steps>
+
+1. Call comes to director (5000)
+2. Director's phone rings
+3. Javier dials `*85000`
+4. **Pickup fails** - Not in same pickup group
+5. Director's phone keeps ringing
+
+</Steps>
+
+**Console output:**
+```
+-- Executing [*85000@empleado:1] NoOp("SIP/javier-00000001", "Capturando llamada a la extension 5000")
+-- Executing [*85000@empleado:2] Pickup("SIP/javier-00000001", "5000")
+-- No call pickup possible for extension 5000
+```
+
+## Group Numbering
+
+Groups are numbered 1-63 (or higher with namedcallgroups):
+
+```ini
+callgroup=1
+pickupgroup=1,2,3
+```
+
+You can specify multiple groups:
+```ini
+pickupgroup=1,2,3,4,5
+```
+
+## Advanced: Named Call Groups
+
+For more readable configuration:
+
+```ini
+[general]
+namedcallgroup=yes
+namedpickupgroup=yes
+
+[javier]
+namedcallgroup=sales
+namedpickupgroup=sales
+
+[belen]
+namedcallgroup=sales
+namedpickupgroup=sales
+
+[director]
+namedcallgroup=management
+namedpickupgroup=management,sales
+```
+
+## Troubleshooting
+
+### Pickup not working
+
+1. Check call groups are configured:
+   ```
+   CLI> sip show peer javier
+   ```
+   Look for `Callgroup` and `Pickupgroup` lines
+
+2. Verify phone is ringing:
+   ```
+   CLI> core show channels
+   ```
+
+3. Check pickup group permissions:
+   - Pickup group must include target's call group
+   - Example: If target is in callgroup=2, picker must have pickupgroup=2
+
+4. Enable verbose logging:
+   ```
+   CLI> core set verbose 5
+   ```
+
+### Common issues
+
+- **"No call pickup possible"** - Group mismatch or no ringing call
+- **Wrong extension** - Verify extension number is correct
+- **Context issues** - May need `@context` specification
+- **Timing** - Call must still be ringing (not answered or in voicemail)
+
+## Best Practices
+
+1. **Logical grouping** - Group by department or function
+2. **Document groups** - Keep a reference of group numbers and members
+3. **Limit pickup scope** - Don't let everyone pickup everything
+4. **Train users** - Ensure staff knows the pickup code
+5. **Test scenarios** - Verify both allowed and denied pickups work correctly

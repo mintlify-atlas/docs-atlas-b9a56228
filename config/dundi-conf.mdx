@@ -1,0 +1,586 @@
+---
+title: "dundi.conf Configuration"
+description: "Complete guide to DUNDi distributed dialplan configuration in Asterisk"
+---
+
+# dundi.conf Configuration
+
+The `dundi.conf` file configures DUNDi (Distributed Universal Number Discovery), a peer-to-peer system for sharing dialplan information between Asterisk servers. DUNDi enables distributed call routing across multiple PBX systems.
+
+## File Location
+
+```
+/etc/asterisk/dundi.conf
+```
+
+## What is DUNDi?
+
+DUNDi is a protocol that allows multiple Asterisk servers to:
+- Share extension/number information
+- Route calls between systems without central directory
+- Provide redundant routing paths
+- Maintain privacy and security through encryption
+
+## Configuration Structure
+
+The file consists of:
+- **[general]** section - Global DUNDi settings
+- **[mappings]** section - Define what to share with peers
+- **Peer sections** - Individual peer configurations (identified by MAC address)
+
+## [general] Section
+
+Global DUNDi protocol settings.
+
+```ini
+[general]
+ttl=32
+autokill=yes
+```
+
+<ParamField path="ttl" type="integer" default="32">
+  Time-to-live for DUNDi queries. Maximum number of hops a query can traverse.
+  
+  Prevents infinite loops in peer networks. Range: 1-32
+</ParamField>
+
+<ParamField path="autokill" type="boolean" default="yes">
+  Automatically remove peers that haven't responded recently.
+  
+  Helps maintain clean peer list when systems go offline.
+</ParamField>
+
+<ParamField path="port" type="integer" default="4520">
+  UDP port for DUNDi protocol communication.
+</ParamField>
+
+<ParamField path="bindaddr" type="string" default="0.0.0.0">
+  IP address to bind DUNDi socket. Use `0.0.0.0` for all interfaces.
+</ParamField>
+
+<ParamField path="cache" type="integer" default="3600">
+  Seconds to cache DUNDi lookup results.
+  
+  Reduces network traffic by caching successful lookups.
+</ParamField>
+
+## [mappings] Section
+
+Defines what extensions/contexts you share with DUNDi peers and how to route them.
+
+### Mapping Format
+
+```ini
+[mappings]
+context => local_context,weight,tech,destination,options
+```
+
+### Mapping Components
+
+<ParamField path="context" type="string" required>
+  DUNDi context name shared between peers (e.g., `priv`, `e164`).
+  
+  Common contexts:
+  - `e164` - Public E.164 numbers (PSTN)
+  - `priv` - Private extensions (internal)
+</ParamField>
+
+<ParamField path="local_context" type="string" required>
+  Local dialplan context where extensions are defined.
+  
+  This is where calls are actually routed in your local extensions.conf.
+</ParamField>
+
+<ParamField path="weight" type="integer" required>
+  Route priority. Lower weight = higher priority (0 = highest).
+  
+  When multiple routes available, lowest weight is tried first.
+</ParamField>
+
+<ParamField path="tech" type="string" required>
+  Channel technology to use: `SIP`, `IAX2`, `PJSIP`, etc.
+</ParamField>
+
+<ParamField path="destination" type="string" required>
+  Dial string pattern. Use `${NUMBER}` variable for matched extension.
+  
+  Example: `192.168.1.180/${NUMBER}` routes to IP with extension
+</ParamField>
+
+<ParamField path="options" type="string">
+  Mapping options:
+  - `nopartial` - Don't use for partial matches
+  - `nounsolicited` - Don't accept unsolicited peer updates
+  - `nocomunsolicit` - Don't communicate with unsolicited peers
+  - `residential` - Residential (not business)
+  - `commercial` - Commercial/business
+  - `mobile` - Mobile number
+  - `nocomunsolicit` - Don't communicate via unsolicited ads
+</ParamField>
+
+### Mapping Examples
+
+#### Basic Private Extension Mapping
+
+```ini
+[mappings]
+priv => dundi-priv-canonical,0,SIP,192.168.1.180/${NUMBER},nopartial
+```
+
+This shares extensions from `dundi-priv-canonical` context via SIP to IP 192.168.1.180.
+
+#### Multi-Tier Routing
+
+```ini
+[mappings]
+priv => dundi-priv-canonical,0,SIP,192.168.1.180/${NUMBER},nopartial
+priv => dundi-priv-customers,100,SIP,192.168.1.180/${NUMBER},nopartial
+priv => dundi-priv-via-pstn,400,SIP,192.168.1.180/${NUMBER},nopartial
+```
+
+This creates three routing tiers:
+1. Direct canonical routes (weight 0 - highest priority)
+2. Customer routes (weight 100 - medium priority)
+3. PSTN fallback routes (weight 400 - lowest priority)
+
+#### E.164 Public Number Mapping
+
+```ini
+[mappings]
+e164 => dundi-e164-canonical,0,IAX2,guest@pbx.example.com/${NUMBER}
+e164 => dundi-e164-customers,100,IAX2,guest@pbx.example.com/${NUMBER}
+e164 => dundi-e164-via-pstn,400,IAX2,guest@pbx.example.com/${NUMBER}
+```
+
+## Peer Configuration
+
+Each DUNDi peer is defined using their MAC address as the section identifier.
+
+### Peer Section Format
+
+```ini
+[MAC:ADDRESS]
+model = symmetric
+host = ip.address
+inkey = peer_public_key
+outkey = our_private_key
+include = context
+permit = context
+qualify = yes
+order = primary
+```
+
+### Peer Parameters
+
+<ParamField path="[MAC:ADDRESS]" type="section" required>
+  Peer identifier using MAC address format.
+  
+  Example: `[00:0C:29:52:7C:20]`
+  
+  MAC address uniquely identifies the peer system.
+</ParamField>
+
+<ParamField path="model" type="string" required>
+  Peering model:
+  - `symmetric` - Both systems peer with each other (most common)
+  - `inbound` - Only accept queries from peer
+  - `outbound` - Only send queries to peer
+</ParamField>
+
+<ParamField path="host" type="string" required>
+  IP address or hostname of peer DUNDi system.
+  
+  Example: `host = 192.168.1.200`
+</ParamField>
+
+<ParamField path="inkey" type="string" required>
+  Peer's public key filename (without path or extension).
+  
+  Used to verify incoming requests from peer. Key must exist in `/var/lib/asterisk/keys/`
+  
+  Example: `inkey = PBX200` references `/var/lib/asterisk/keys/PBX200.pub`
+</ParamField>
+
+<ParamField path="outkey" type="string" required>
+  Our private key filename (without path or extension).
+  
+  Used to sign outgoing requests to peer. Key must exist in `/var/lib/asterisk/keys/`
+  
+  Example: `outkey = PBX180` references `/var/lib/asterisk/keys/PBX180.key`
+</ParamField>
+
+<ParamField path="include" type="string" required>
+  DUNDi context(s) to share with this peer.
+  
+  Can specify multiple contexts separated by `|`
+  
+  Example: `include = priv|e164`
+</ParamField>
+
+<ParamField path="permit" type="string" required>
+  DUNDi context(s) to accept queries for from this peer.
+  
+  Can specify multiple contexts separated by `|`
+  
+  Example: `permit = priv`
+</ParamField>
+
+<ParamField path="qualify" type="boolean" default="no">
+  Send periodic keepalive packets to monitor peer availability.
+  
+  Set to `yes` to enable health monitoring.
+</ParamField>
+
+<ParamField path="order" type="string">
+  Route preference for this peer:
+  - `primary` - Prefer this peer
+  - `secondary` - Use as backup
+  - `tertiary` - Use as last resort
+  - `quartiary` - Lowest priority
+</ParamField>
+
+<ParamField path="precache" type="string">
+  Extensions to pre-cache from this peer.
+  
+  Example: `precache = _4XXX` pre-caches 4000-4999
+</ParamField>
+
+## Complete Peer Examples
+
+### PBX180 Configuration (192.168.1.180)
+
+```ini
+[general]
+ttl=32
+autokill=yes
+
+[mappings]
+priv => dundi-priv-canonical,0,SIP,192.168.1.180/${NUMBER},nopartial
+priv => dundi-priv-customers,100,SIP,192.168.1.180/${NUMBER},nopartial
+priv => dundi-priv-via-pstn,400,SIP,192.168.1.180/${NUMBER},nopartial
+
+[00:0C:29:52:7C:20]  ; PBX200's MAC address
+model = symmetric
+host = 192.168.1.200  ; PBX200's IP
+inkey = PBX200        ; PBX200's public key
+outkey = PBX180       ; Our private key
+include = priv
+permit = priv
+qualify = yes
+order = primary
+```
+
+### PBX200 Configuration (192.168.1.200)
+
+```ini
+[general]
+ttl=32
+autokill=yes
+
+[mappings]
+priv => dundi-priv-canonical,0,SIP,192.168.1.200/${NUMBER},nopartial
+priv => dundi-priv-customers,100,SIP,192.168.1.200/${NUMBER},nopartial
+priv => dundi-priv-via-pstn,400,SIP,192.168.1.200/${NUMBER},nopartial
+
+[00:0C:29:CB:EB:C6]  ; PBX180's MAC address
+model = symmetric
+host = 192.168.1.180  ; PBX180's IP
+inkey = PBX180        ; PBX180's public key
+outkey = PBX200       ; Our private key
+include = priv
+permit = priv
+qualify = yes
+order = primary
+```
+
+## Encryption Keys Setup
+
+DUNDi requires RSA public/private key pairs for authentication.
+
+### Generate Keys
+
+```bash
+# Generate private key for this system
+cd /var/lib/asterisk/keys/
+asterisk -rx "keys init"
+
+# Or manually with OpenSSL
+openssl genrsa -out PBX180.key 1024
+openssl rsa -in PBX180.key -pubout -out PBX180.pub
+```
+
+### Exchange Keys
+
+1. **Generate keys on both systems**
+   ```bash
+   # On PBX180
+   asterisk -rx "keys init"
+   
+   # On PBX200
+   asterisk -rx "keys init"
+   ```
+
+2. **Exchange public keys**
+   ```bash
+   # Copy PBX180.pub to PBX200:/var/lib/asterisk/keys/
+   # Copy PBX200.pub to PBX180:/var/lib/asterisk/keys/
+   ```
+
+3. **Set permissions**
+   ```bash
+   chown asterisk:asterisk /var/lib/asterisk/keys/*
+   chmod 600 /var/lib/asterisk/keys/*.key
+   chmod 644 /var/lib/asterisk/keys/*.pub
+   ```
+
+### Key File Locations
+
+```
+/var/lib/asterisk/keys/
+├── PBX180.key     # This system's private key
+├── PBX180.pub     # This system's public key
+└── PBX200.pub     # Peer system's public key
+```
+
+## Integration with extensions.conf
+
+DUNDi requires corresponding dialplan contexts.
+
+### Basic DUNDi Dialplan
+
+```ini
+; Canonical routes (local extensions)
+[dundi-priv-canonical]
+exten => _4XXX,1,Dial(SIP/${EXTEN},20,rtT)
+
+; Customer routes (empty unless you have customers)
+[dundi-priv-customers]
+
+; PSTN fallback routes
+[dundi-priv-via-pstn]
+
+; Local context - includes all routing options
+[dundi-priv-local]
+include => dundi-priv-canonical
+include => dundi-priv-customers
+include => dundi-priv-via-pstn
+
+; DUNDi switch context
+[dundi-priv-switch]
+switch => DUNDi/priv
+
+; Lookup context - combines local and DUNDi
+[dundi-priv-lookup]
+include => dundi-priv-local
+include => dundi-priv-switch
+
+; Macro for DUNDi calls
+[macro-dundi-priv]
+exten => s,1,NoOp(DUNDi lookup for ${ARG1})
+same => n,Goto(${ARG1},1)
+include => dundi-priv-lookup
+```
+
+### Using DUNDi in Dialplan
+
+```ini
+[empleado]
+; Local extensions
+exten => 4000,1,Dial(SIP/javier,15)
+
+; DUNDi extension (5-digit, starting with 99999)
+exten => _99999XXXX,1,NoOp(Calling ${EXTEN:5} via DUNDi)
+same => n,Macro(dundi-priv,${EXTEN:5})
+same => n,Hangup()
+```
+
+To call extension 4000 on remote PBX, dial: 999994000
+
+## Advanced Dialplan Example
+
+```ini
+; ========== DUNDi E.164 Configuration ==========
+[dundi-e164-canonical]
+; Local PSTN-connected extensions
+
+[dundi-e164-customers]
+; Customer extensions
+
+[dundi-e164-via-pstn]
+; PSTN fallback
+
+[dundi-e164-local]
+include => dundi-e164-canonical
+include => dundi-e164-customers
+include => dundi-e164-via-pstn
+
+[dundi-e164-switch]
+switch => DUNDi/e164
+
+[dundi-e164-lookup]
+include => dundi-e164-local
+include => dundi-e164-switch
+
+[macro-dundi-e164]
+exten => s,1,Goto(${ARG1},1)
+include => dundi-e164-lookup
+
+; ========== DUNDi Private Configuration ==========
+[dundi-priv-canonical]
+exten => _4XXX,1,Dial(SIP/${EXTEN},20,rtT)
+
+[dundi-priv-customers]
+
+[dundi-priv-via-pstn]
+
+[dundi-priv-local]
+include => dundi-priv-canonical
+include => dundi-priv-customers
+include => dundi-priv-via-pstn
+
+[dundi-priv-switch]
+switch => DUNDi/priv
+
+[dundi-priv-lookup]
+include => dundi-priv-local
+include => dundi-priv-switch
+
+[macro-dundi-priv]
+exten => s,1,NoOp(DUNDi private lookup)
+same => n,Goto(${ARG1},1)
+include => dundi-priv-lookup
+```
+
+## CLI Commands
+
+Manage DUNDi from Asterisk CLI:
+
+```bash
+# Show DUNDi peers
+asterisk -rx "dundi show peers"
+
+# Show DUNDi mappings
+asterisk -rx "dundi show mappings"
+
+# Lookup extension via DUNDi
+asterisk -rx "dundi lookup 4000@priv"
+
+# Show DUNDi cache
+asterisk -rx "dundi show cache"
+
+# Flush DUNDi cache
+asterisk -rx "dundi flush"
+
+# Show DUNDi statistics
+asterisk -rx "dundi show peers"
+
+# Precache extensions
+asterisk -rx "dundi precache priv _4XXX"
+
+# Reload DUNDi
+asterisk -rx "dundi reload"
+```
+
+## Testing DUNDi
+
+### 1. Verify Keys
+
+```bash
+ls -l /var/lib/asterisk/keys/
+# Should show .key (private) and .pub (public) files
+```
+
+### 2. Check Peer Status
+
+```bash
+asterisk -rx "dundi show peers"
+# Should show peer as OK/Registered
+```
+
+### 3. Test Lookup
+
+```bash
+asterisk -rx "dundi lookup 4000@priv"
+# Should return route information
+```
+
+### 4. Make Test Call
+
+Dial DUNDi prefix + extension (e.g., 999994000)
+
+## Troubleshooting
+
+### Peer Not Connecting
+
+1. **Verify network connectivity**
+   ```bash
+   ping 192.168.1.200
+   ```
+
+2. **Check firewall** - UDP port 4520 must be open
+   ```bash
+   netstat -uln | grep 4520
+   ```
+
+3. **Verify keys**
+   ```bash
+   ls -l /var/lib/asterisk/keys/
+   ```
+
+4. **Check peer configuration** - MAC address must match
+   ```bash
+   ifconfig | grep ether
+   ```
+
+### Lookup Failures
+
+1. **Check mappings**
+   ```bash
+   asterisk -rx "dundi show mappings"
+   ```
+
+2. **Verify contexts exist** in extensions.conf
+
+3. **Test local context first**
+   ```bash
+   asterisk -rx "dialplan show dundi-priv-canonical"
+   ```
+
+4. **Check DUNDi cache**
+   ```bash
+   asterisk -rx "dundi show cache"
+   asterisk -rx "dundi flush"  # Clear and retry
+   ```
+
+### Authentication Errors
+
+1. **Verify key names** match inkey/outkey in config
+2. **Check key permissions** (600 for .key, 644 for .pub)
+3. **Regenerate keys** if corrupted
+4. **Verify key ownership** (asterisk:asterisk)
+
+## Best Practices
+
+1. **Use descriptive key names** - Name keys after system (e.g., PBX180, PBX200)
+2. **Secure key files** - Proper permissions and ownership
+3. **Document MAC addresses** - Comment which peer each section represents
+4. **Use symmetric model** - Simplest for peer-to-peer
+5. **Enable qualify** - Monitor peer health
+6. **Use weight tiers** - Create fallback routing paths
+7. **Cache appropriately** - Balance freshness vs. performance
+8. **Test thoroughly** - Verify both directions of calling
+
+## Security Considerations
+
+1. **Encrypt traffic** - DUNDi uses RSA encryption
+2. **Restrict contexts** - Only share what's necessary
+3. **Firewall properly** - Limit DUNDi port access to known peers
+4. **Rotate keys periodically** - Update keys on schedule
+5. **Monitor logs** - Watch for unauthorized lookup attempts
+6. **Use permit carefully** - Restrict what peers can query
+
+## Related Configuration
+
+- [extensions.conf](/config/extensions-conf) - DUNDi dialplan contexts
+- [sip.conf](/config/sip-conf) - SIP peer configuration for routing
+- [iax.conf](/config/sip-conf) - IAX2 alternative to SIP for DUNDi

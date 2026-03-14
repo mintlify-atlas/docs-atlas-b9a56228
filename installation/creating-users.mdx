@@ -1,0 +1,162 @@
+---
+title: Creating Users
+description: Create a dedicated system user for running Asterisk securely
+---
+
+By default, Asterisk runs as the root user. For security reasons, it's recommended to create a dedicated user account for running Asterisk.
+
+## Create Asterisk User
+
+<Steps>
+  <Step title="Create system user">
+    Create a system user named `asterisk`:
+
+    ```shell
+    sudo adduser --system --group --home /var/lib/asterisk --no-create-home --gecos "Asterisk PBX" asterisk
+    ```
+
+    This creates a system user without a home directory, specifically for running the Asterisk service.
+  </Step>
+
+  <Step title="Configure Asterisk to run as asterisk user">
+    Edit the Asterisk default configuration file:
+
+    ```shell
+    sudo vim /etc/default/asterisk
+    ```
+
+    Uncomment the following lines:
+
+    ```conf
+    AST_USER="asterisk"
+    AST_GROUP="asterisk"
+    ```
+  </Step>
+
+  <Step title="Add user to required groups">
+    Add the asterisk user to the dialout and audio groups:
+
+    ```shell
+    sudo usermod -a -G dialout,audio asterisk
+    ```
+  </Step>
+</Steps>
+
+## Set File Permissions
+
+<Steps>
+  <Step title="Change ownership">
+    Change the ownership of all Asterisk files and directories:
+
+    ```shell
+    sudo chown -R asterisk: /var/{lib,log,run,spool}/asterisk /usr/lib/asterisk /etc/asterisk
+    ```
+  </Step>
+
+  <Step title="Set permissions">
+    Set appropriate permissions:
+
+    ```shell
+    sudo chmod -R 750 /var/{lib,log,run,spool}/asterisk /usr/lib/asterisk /etc/asterisk
+    ```
+  </Step>
+</Steps>
+
+## Start Asterisk
+
+<Steps>
+  <Step title="Start the service">
+    ```shell
+    sudo /etc/init.d/asterisk start
+    ```
+  </Step>
+
+  <Step title="Access the Asterisk CLI">
+    To access the Asterisk command-line interface:
+
+    ```shell
+    sudo asterisk -rvvvvvvc
+    ```
+
+    Or for less verbose output:
+
+    ```shell
+    sudo asterisk -r
+    ```
+  </Step>
+
+  <Step title="Enable service at boot">
+    Enable Asterisk to start automatically on system boot:
+
+    ```shell
+    sudo systemctl enable asterisk
+    ```
+  </Step>
+</Steps>
+
+## Service Management
+
+You can manage the Asterisk service with these commands:
+
+```shell
+sudo /etc/init.d/asterisk {start|stop|restart|reload|force-reload|status}
+```
+
+- **start**: Start the Asterisk service
+- **stop**: Stop the Asterisk service
+- **restart**: Restart the service
+- **reload**: Reload configuration without stopping
+- **force-reload**: Force reload of configuration
+- **status**: Check if the service is running
+
+## Configuration Best Practices
+
+Before modifying configuration files, it's recommended to create backups:
+
+<Steps>
+  <Step title="Navigate to config directory">
+    ```shell
+    cd /etc/asterisk
+    ```
+  </Step>
+
+  <Step title="Create backup">
+    ```shell
+    sudo cp fichero.conf fichero.conf.bck
+    ```
+
+    Replace `fichero` with the actual configuration file name.
+  </Step>
+</Steps>
+
+## Clean Configuration Files
+
+The default configuration files contain many comments. You can remove them for easier editing:
+
+<Steps>
+  <Step title="Open file in vim">
+    ```shell
+    sudo vim /etc/asterisk/fichero.conf
+    ```
+  </Step>
+
+  <Step title="Remove comments">
+    In vim command mode, run:
+
+    ```vim
+    :g/^\s*;/d
+    ```
+  </Step>
+
+  <Step title="Remove empty lines">
+    ```vim
+    :g/^$/d
+    ```
+  </Step>
+
+  <Step title="Save the file">
+    ```vim
+    :wq
+    ```
+  </Step>
+</Steps>

@@ -1,0 +1,217 @@
+---
+title: ODBC Connector Setup
+description: Install and configure the ODBC connector to enable Asterisk-MariaDB communication
+---
+
+## What is ODBC?
+
+[ODBC](https://en.wikipedia.org/wiki/Open_Database_Connectivity) (Open DataBase Connectivity) is a standard API that provides database access from any application. For Asterisk integration, we'll use [unixODBC](http://www.unixodbc.org/), which serves as the bridge between Asterisk and MariaDB.
+
+## Installation
+
+<Steps>
+  <Step title="Install unixODBC">
+    Install the unixODBC package and development headers:
+
+    ```bash
+    sudo apt-get install unixodbc unixodbc-dev
+    ```
+  </Step>
+
+  <Step title="Download MySQL ODBC connector">
+    Download the appropriate MySQL Connector/ODBC for your system. Find the correct version at the [MySQL Downloads page](https://dev.mysql.com/downloads/connector/odbc/):
+
+    ```bash
+    wget https://dev.mysql.com/get/Downloads/Connector-ODBC/8.0/mysql-connector-odbc-8.0.19-linux-debian9-x86-64bit.tar.gz
+    ```
+  </Step>
+
+  <Step title="Extract the archive">
+    Decompress the downloaded file:
+
+    ```bash
+    tar xvzf mysql-connector-odbc-8.0.19-linux-debian9-x86-64bit.tar.gz
+    ```
+  </Step>
+
+  <Step title="Install connector files">
+    Copy the connector files to their appropriate locations:
+
+    ```bash
+    cd mysql-connector-odbc-8.0.19-linux-debian9-x86-64bit/
+    sudo cp bin/* /usr/local/bin
+    sudo cp lib/* /usr/local/lib
+    ```
+  </Step>
+
+  <Step title="Register ODBC drivers">
+    Use the `myodbc-installer` utility to register both ANSI and Unicode drivers:
+
+    ```bash
+    sudo myodbc-installer -a -d -n "MySQL ODBC 8.0 Driver" -t "Driver=/usr/local/lib/libmyodbc8w.so"
+    sudo myodbc-installer -a -d -n "MySQL ODBC 8.0" -t "Driver=/usr/local/lib/libmyodbc8a.so"
+    ```
+  </Step>
+
+  <Step title="Verify driver registration">
+    Confirm the drivers are registered correctly:
+
+    ```bash
+    myodbc-installer -d -l
+    ```
+
+    You should see both drivers listed in the output.
+  </Step>
+</Steps>
+
+## Configuration Files
+
+### odbcinst.ini
+
+The `odbcinst.ini` file defines the ODBC drivers available on your system.
+
+<Steps>
+  <Step title="Edit odbcinst.ini">
+    Open the file for editing:
+
+    ```bash
+    sudo vim /etc/odbcinst.ini
+    ```
+  </Step>
+
+  <Step title="Add driver configurations">
+    Add the following driver definitions:
+
+    ```ini
+    [MySQL ODBC 8.0]
+    Description  = Driver ODBC ANSI para MySQL
+    Driver       = /usr/local/lib/libmyodbc8a.so
+    Setup        = /usr/local/lib/libmyodbc8S.so
+    FileUsage    = 1
+    UsageCount   = 1
+
+    [MySQL ODBC 8.0 Driver]
+    Description  = Driver ODBC Unicode para MySQL
+    Driver       = /usr/local/lib/libmyodbc8w.so
+    Setup        = /usr/local/lib/libmyodbc8S.so
+    FileUsage    = 1
+    UsageCount   = 2
+    ```
+
+    <Note>
+      The ANSI driver (`libmyodbc8a.so`) is used for standard ASCII text, while the Unicode driver (`libmyodbc8w.so`) supports international characters.
+    </Note>
+  </Step>
+</Steps>
+
+### odbc.ini
+
+The `odbc.ini` file defines Data Source Names (DSNs) that applications use to connect to databases.
+
+<Steps>
+  <Step title="Edit odbc.ini">
+    Open the file for editing:
+
+    ```bash
+    sudo vim /etc/odbc.ini
+    ```
+  </Step>
+
+  <Step title="Create DSN for Asterisk">
+    Add a DSN configuration named `asterisk-connector`:
+
+    ```ini
+    [asterisk-connector]
+    Description      = Conexcion MySQL a la base de datos 'asteriskdb'
+    Driver           = MySQL ODBC 8.0
+    Database         = asteriskdb
+    Server           = localhost
+    Port             = 3306
+    Socket           = /var/run/mysqld/mysqld.sock
+    ```
+
+    **Configuration breakdown:**
+    - **Description**: Human-readable description of the connection
+    - **Driver**: References the driver name from `odbcinst.ini`
+    - **Database**: The database name (asteriskdb)
+    - **Server**: Database server location (localhost for local)
+    - **Port**: MySQL/MariaDB default port
+    - **Socket**: Unix socket file for local connections
+  </Step>
+</Steps>
+
+## Testing the Connection
+
+Verify that ODBC can successfully connect to your MariaDB database.
+
+<Steps>
+  <Step title="Test with isql">
+    Use the `isql` command-line tool to test the connection:
+
+    ```bash
+    echo "select * from usuarios" | isql -v asterisk-connector asterisk asterisk
+    ```
+
+    **Command breakdown:**
+    - `asterisk-connector`: The DSN name from odbc.ini
+    - First `asterisk`: Database username
+    - Second `asterisk`: Database password
+  </Step>
+
+  <Step title="Verify output">
+    If the connection is successful, you should see the contents of the `usuarios` table displayed with proper formatting:
+
+    ```
+    +-------+-----------+
+    | nombre| extension |
+    +-------+-----------+
+    | javier| 4000      |
+    | belen | 4001      |
+    | ...
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+  If the connection fails, check:
+  - MariaDB service is running: `sudo systemctl status mysql`
+  - Database credentials are correct
+  - Socket path matches your system: `find /var -name mysqld.sock 2>/dev/null`
+  - Firewall allows connections on port 3306 (if using TCP/IP)
+</Warning>
+
+## Troubleshooting
+
+### Common Issues
+
+<AccordionGroup>
+  <Accordion title="Driver not found error">
+    Verify drivers are installed:
+    ```bash
+    ls -l /usr/local/lib/libmyodbc*
+    myodbc-installer -d -l
+    ```
+  </Accordion>
+
+  <Accordion title="Socket connection error">
+    Find the correct socket path:
+    ```bash
+    sudo find /var -name mysqld.sock 2>/dev/null
+    ```
+    Update the `Socket` parameter in `/etc/odbc.ini` accordingly.
+  </Accordion>
+
+  <Accordion title="Access denied error">
+    Verify user permissions in MariaDB:
+    ```sql
+    SHOW GRANTS FOR 'asterisk'@'localhost';
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+With ODBC configured and tested, you can now:
+
+1. [Configure Asterisk connection](/database/asterisk-connection) to use ODBC
+2. [Test the integration](/database/testing) with a simple dialplan query

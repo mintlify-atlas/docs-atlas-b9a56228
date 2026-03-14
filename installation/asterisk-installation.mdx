@@ -1,0 +1,143 @@
+---
+title: Asterisk Installation
+description: Install Asterisk PBX software and required dependencies
+---
+
+## Update System
+
+Before installing Asterisk, ensure your operating system is up to date:
+
+<Steps>
+  <Step title="Update package lists and upgrade">
+    ```shell
+    sudo apt update && sudo apt upgrade
+    ```
+  </Step>
+
+  <Step title="Install build dependencies">
+    ```shell
+    sudo apt install wget build-essential subversion
+    ```
+  </Step>
+</Steps>
+
+## Download Asterisk
+
+<Steps>
+  <Step title="Navigate to source directory">
+    ```shell
+    cd /usr/src/
+    ```
+  </Step>
+
+  <Step title="Download Asterisk 15.7.1">
+    ```shell
+    sudo wget http://downloads.asterisk.org/pub/telephony/asterisk/releases/asterisk-15.7.1.tar.gz
+    ```
+  </Step>
+
+  <Step title="Extract the package">
+    ```shell
+    sudo tar zxf asterisk-15.7.1.tar.gz
+    ```
+  </Step>
+</Steps>
+
+## Install Dependencies
+
+<Steps>
+  <Step title="Navigate to Asterisk directory">
+    ```shell
+    cd asterisk-15.7.1/
+    ```
+  </Step>
+
+  <Step title="Get MP3 source">
+    ```shell
+    sudo contrib/scripts/get_mp3_source.sh
+    ```
+  </Step>
+
+  <Step title="Install prerequisites">
+    ```shell
+    sudo contrib/scripts/install_prereq install
+    ```
+  </Step>
+</Steps>
+
+## Compile Asterisk
+
+<Steps>
+  <Step title="Configure">
+    Prepare the code for compilation:
+
+    ```shell
+    sudo ./configure
+    ```
+
+    You should see a success message when this completes.
+  </Step>
+
+  <Step title="Select modules">
+    Choose which modules to compile:
+
+    ```shell
+    sudo make menuselect
+    ```
+
+    A menu interface will appear where you can select or deselect modules.
+  </Step>
+
+  <Step title="Compile">
+    Compile Asterisk (using 2 cores):
+
+    ```shell
+    sudo make -j2
+    ```
+
+    <Warning>
+      This process may take several minutes depending on your system.
+    </Warning>
+  </Step>
+
+  <Step title="Install Asterisk">
+    ```shell
+    sudo make install
+    ```
+  </Step>
+</Steps>
+
+## Install Configuration Files
+
+<Steps>
+  <Step title="Install documentation (optional)">
+    ```shell
+    sudo make progdocs
+    ```
+  </Step>
+
+  <Step title="Install sample configuration files">
+    ```shell
+    sudo make samples
+    ```
+  </Step>
+
+  <Step title="Install init script">
+    ```shell
+    sudo make config
+    ```
+  </Step>
+
+  <Step title="Update library cache">
+    ```shell
+    sudo ldconfig
+    ```
+  </Step>
+</Steps>
+
+## Next Steps
+
+With Asterisk installed, you can now proceed to:
+- [Create an Asterisk user](/installation/creating-users)
+- [Configure language settings](/installation/language-setup)
+- [Test the installation](/installation/testing)

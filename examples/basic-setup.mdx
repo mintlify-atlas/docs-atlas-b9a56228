@@ -1,0 +1,251 @@
+---
+title: "Basic Two-User Setup"
+description: "Simple Asterisk PBX configuration with two SIP users"
+---
+
+This example demonstrates a basic Asterisk PBX setup with two users (Javier and Belen) who can call each other. This is based on Section 3.6 of the tutorial and provides a foundation for understanding Asterisk configuration.
+
+## Overview
+
+This setup includes:
+- Two SIP users configured with extensions 4000 and 4001
+- Basic dial plan to enable calls between users
+- NAT traversal support for remote clients
+- Standard codec configuration
+
+## Configuration Files
+
+<Tabs>
+  <Tab title="sip.conf">
+    The SIP configuration file defines the users and their connection parameters.
+
+    ```ini /etc/asterisk/sip.conf
+    [general]
+    port=5060
+    directmedia=no
+    language=es
+    context=public                  ; Default context for incoming calls
+    allowoverlap=no                 ; Disable overlap dialing support
+    udpbindaddr=0.0.0.0             ; IP address to bind UDP listen socket to
+    tcpenable=no                    ; Enable server for incoming TCP connections
+    tcpbindaddr=0.0.0.0             ; IP address for TCP server to bind to
+    transport=udp                   ; Set the default transports
+    srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
+
+    [authentication]
+
+    [javier]
+    type=friend                     ; Can make and receive calls
+    secret=12345678                 ; Password for authentication
+    context=empleado                ; Dial plan context for this user
+    host=dynamic                    ; IP address is dynamic (DHCP)
+    canreinvite=no                  ; Disable direct media between endpoints
+    nat=force_rport,comedia         ; NAT traversal settings
+
+    [belen]
+    type=friend
+    secret=12345678
+    context=empleado
+    host=dynamic
+    canreinvite=no
+    nat=force_rport,comedia
+
+    [paul]
+    type=friend
+    secret=12345678
+    context=empleado
+    host=dynamic
+    canreinvite=no
+    nat=force_rport,comedia
+
+    # Template definitions for reusable configuration
+    [basic-options](!)              ; A template
+            dtmfmode=rfc2833
+            context=from-office
+            type=friend
+
+    [natted-phone](!,basic-options) ; Template inheriting basic-options
+            directmedia=no
+            host=dynamic
+
+    [public-phone](!,basic-options) ; Template inheriting basic-options
+            directmedia=yes
+
+    [my-codecs](!)                  ; A template for preferred codecs
+            disallow=all
+            allow=ilbc
+            allow=g729
+            allow=gsm
+            allow=g723
+            allow=ulaw
+
+    [ulaw-phone](!)                 ; Template for ulaw-only
+            disallow=all
+            allow=ulaw
+    ```
+
+    ### Key Configuration Options
+
+    - `type=friend`: Allows both incoming and outgoing calls
+    - `host=dynamic`: User's IP address can change (typical for DHCP)
+    - `nat=force_rport,comedia`: Helps with NAT traversal for remote users
+    - `context`: Determines which dial plan context the user enters
+    - `canreinvite=no`: Forces all RTP media through Asterisk (useful for NAT)
+
+  </Tab>
+
+  <Tab title="extensions.conf">
+    The dial plan configuration defines how calls are routed.
+
+    ```ini /etc/asterisk/extensions.conf
+    [general]
+    static=yes
+    writeprotect=no
+    clearglobalvars=no
+
+    [globals]
+    CONSOLE=Console/dsp             ; Console interface for demo
+    IAXINFO=guest                   ; IAXtel username/password
+    TRUNK=DAHDI/G2                  ; Trunk interface
+    TRUNKMSD=1                      ; MSD digits to strip (usually 1 or 0)
+
+    [empleado]
+    ; Extension 4000 - Call Javier
+    exten => 4000,1,Dial(SIP/javier)
+    
+    ; Extension 4001 - Call Belen
+    exten => 4001,1,Dial(SIP/belen)
+
+    [public]
+    include => demo
+
+    [default]
+    include => demo
+    ```
+
+    ### Dial Plan Explanation
+
+    The `[empleado]` context contains the dial plan for employees:
+    
+    - **Extension 4000**: Routes calls to Javier's SIP phone
+    - **Extension 4001**: Routes calls to Belen's SIP phone
+    - Simple `Dial()` application connects the caller to the destination
+
+  </Tab>
+</Tabs>
+
+## SIP Client Configuration
+
+To connect to this PBX, configure your SIP clients with these parameters:
+
+### Javier's Phone
+
+- **SIP Server**: Your Asterisk server IP
+- **Username**: `javier`
+- **Password**: `12345678`
+- **Extension**: `4000`
+- **Transport**: UDP
+- **Port**: 5060
+
+### Belen's Phone
+
+- **SIP Server**: Your Asterisk server IP
+- **Username**: `belen`
+- **Password**: `12345678`
+- **Extension**: `4001`
+- **Transport**: UDP
+- **Port**: 5060
+
+## Testing the Setup
+
+### Step 1: Start Asterisk
+
+```bash
+sudo systemctl start asterisk
+```
+
+### Step 2: Verify Configuration
+
+Connect to the Asterisk CLI:
+
+```bash
+sudo asterisk -rvvv
+```
+
+Check SIP peers:
+
+```
+asterisk> sip show peers
+```
+
+You should see both javier and belen listed. If registered, you'll see their IP addresses.
+
+### Step 3: Register SIP Clients
+
+Configure two SIP softphones (like Zoiper, Linphone, or X-Lite) with the credentials above. Once registered, you should see:
+
+```
+asterisk> sip show peers
+Name/username              Host                                    Dyn Forcerport Comedia    ACL Port     Status
+javier/javier              192.168.1.100                            D  Yes        Yes            5060     OK (10 ms)
+belen/belen                192.168.1.101                            D  Yes        Yes            5060     OK (12 ms)
+```
+
+### Step 4: Make a Test Call
+
+From Javier's phone:
+1. Dial `4001`
+2. Belen's phone should ring
+3. Answer and verify two-way audio
+
+From Belen's phone:
+1. Dial `4000`
+2. Javier's phone should ring
+3. Answer and verify two-way audio
+
+### Step 5: Monitor Calls in CLI
+
+Watch call activity in real-time:
+
+```
+asterisk> core set verbose 3
+```
+
+You'll see detailed output when calls are placed:
+
+```
+-- Executing [4001@empleado:1] Dial("SIP/javier-00000000", "SIP/belen") in new stack
+-- Called SIP/belen
+-- SIP/belen-00000001 is ringing
+-- SIP/belen-00000001 answered SIP/javier-00000000
+```
+
+## Troubleshooting
+
+### Clients Won't Register
+
+1. Check firewall settings (allow UDP port 5060)
+2. Verify credentials match exactly
+3. Check Asterisk logs: `tail -f /var/log/asterisk/messages`
+
+### One-Way Audio
+
+1. Verify `directmedia=no` is set in sip.conf
+2. Check NAT settings on your router
+3. Ensure RTP ports (10000-20000) are open in firewall
+
+### Can't Dial Extensions
+
+1. Verify the user's context in sip.conf matches the dial plan
+2. Check for typos in extensions.conf
+3. Reload dial plan: `dialplan reload` in Asterisk CLI
+
+## Next Steps
+
+Once you have this basic setup working, you can expand it with:
+
+- [Voicemail](/features/voicemail)
+- [Call queues](/examples/call-center)
+- [Multiple PBX interconnection](/examples/multi-pbx)
+- [Conference bridges](/features/call-groups)
+- [IVR menus](/features/text-to-speech)

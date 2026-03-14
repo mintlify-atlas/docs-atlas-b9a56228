@@ -1,0 +1,146 @@
+---
+title: 'Softphones'
+description: 'Overview of recommended SIP softphone clients for testing Asterisk PBX'
+icon: 'phone'
+---
+
+## What is a Softphone?
+
+A softphone (combination of *software* and *telephone*) is software used for VoIP communications, either between softphones or to hardphones (physical phones for VoIP communications). They are very useful because you can test locally, without the need for additional hardware (which usually has a high price), the functionality of the PBX.
+
+## Recommended Softphones
+
+Although there are countless softphone applications available, the following have been tested and recommended for use with Asterisk:
+
+<CardGroup cols={2}>
+  <Card title="Pangolin" icon="desktop" href="https://sip-system.com/en/pc/20-pangolin.html">
+    **Platform:** Windows
+    
+    **Pros:**
+    - Free to use
+    - Simple interface
+    
+    **Cons:**
+    - Instability issues
+    - Limited platform support
+  </Card>
+
+  <Card title="Zoiper" icon="phone" href="https://www.zoiper.com/">
+    **Platform:** Windows, macOS, Linux, iOS, Android
+    
+    **Pros:**
+    - Cross-platform availability
+    - Stable and easy to use
+    - Free for basic calling
+    
+    **Cons:**
+    - Advanced features require payment
+  </Card>
+
+  <Card title="3CX" icon="mobile" href="https://www.3cx.es/voip-telefono/softphone/">
+    **Platform:** Windows only
+    
+    **Pros:**
+    - Fast and stable
+    - Simple and comfortable to use
+    - iPhone-style interface
+    - Free
+    
+    **Cons:**
+    - Windows only
+  </Card>
+
+  <Card title="Blink" icon="lock" href="http://icanblink.com/">
+    **Platform:** Windows
+    
+    **Pros:**
+    - Easy certificate management
+    - Good for TLS/secure connections
+    - Free
+    
+    **Cons:**
+    - Windows only
+    - Less feature-rich than competitors
+  </Card>
+
+  <Card title="Sipnetic" icon="mobile-screen" href="https://play.google.com/store/apps/details?id=com.sipnetic.app">
+    **Platform:** Android
+    
+    **Pros:**
+    - Most comfortable SIP client for smartphones
+    - Free for calls and messages
+    - Good mobile interface
+    
+    **Cons:**
+    - Advanced features require payment
+    - Android only
+  </Card>
+
+  <Card title="MizuDroid" icon="message" href="https://play.google.com/store/apps/details?id=com.mizuvoip.mizudroid.app">
+    **Platform:** Android
+    
+    **Pros:**
+    - Good SIP message support
+    - Free
+    - Feature-rich
+    
+    **Cons:**
+    - Android only
+    - Interface can be complex
+  </Card>
+</CardGroup>
+
+## Choosing a Softphone
+
+### For Desktop Testing
+
+- **Windows users:** Try **3CX** first for its stability and ease of use. Use **Blink** if you need TLS certificate support.
+- **Cross-platform needs:** **Zoiper** is your best bet for testing across multiple operating systems.
+- **Budget-conscious:** All listed desktop softphones have free versions suitable for Asterisk testing.
+
+### For Mobile Testing
+
+- **Best overall:** **Sipnetic** offers the most comfortable smartphone experience.
+- **For messaging:** **MizuDroid** has better SIP message implementation.
+- **Both are Android only** - iOS users should use Zoiper.
+
+## Configuration Tips
+
+<Note>
+When configuring softphones to connect to your Asterisk PBX, you'll typically need:
+- **Server/Domain:** Your Asterisk server IP address
+- **Username:** The SIP extension (e.g., `javier`, `4000`)
+- **Password:** The secret defined in `sip.conf`
+- **Port:** Default is 5060 (UDP) or 5061 (TLS)
+</Note>
+
+### TLS Configuration
+
+For secure connections using TLS certificates:
+
+1. Generate client certificates as described in the [Call Security](/features/call-security) section
+2. Use **Blink** on Windows for easiest certificate management
+3. Configure the softphone to use TLS transport
+4. Import the `.pem` certificate file
+
+## Testing Scenarios
+
+Softphones are ideal for testing:
+
+- **Basic calling** between extensions
+- **Voicemail** functionality
+- **Call transfer** and forwarding
+- **SIP messaging** (text messages)
+- **Call pickup** and group calling
+- **IVR menus** and dialplan logic
+- **TLS/secure calling** (with Blink)
+
+<Warning>
+Softphones are excellent for testing but may not be suitable for production use in call centers or business environments where dedicated hardware provides better reliability and audio quality.
+</Warning>
+
+## Related Resources
+
+- [SIP Configuration](/config/sip-conf)
+- [Testing Your Installation](/installation/testing)
+- [Troubleshooting](/reference/troubleshooting)

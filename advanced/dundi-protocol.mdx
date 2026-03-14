@@ -1,0 +1,412 @@
+---
+title: 'DUNDi Protocol Configuration'
+description: 'Step-by-step guide to configuring DUNDi for PBX interconnection'
+---
+
+## Introduction
+
+This guide walks you through the complete process of setting up DUNDi protocol for interconnecting two Asterisk PBX systems. We'll configure encryption keys, dialplan contexts, and SIP peers to enable seamless calling between systems.
+
+## Architecture Overview
+
+The DUNDi setup involves three main components:
+
+1. **Cryptographic Keys**: RSA key pairs for secure authentication
+2. **DUNDi Configuration**: Protocol settings and peer definitions
+3. **Dialplan Integration**: Routing rules for inter-PBX calls
+
+## Step 1: Generate Cryptographic Keys
+
+DUNDi uses RSA public/private key pairs for authentication. Each PBX needs its own key pair.
+
+<Steps>
+  <Step title="Generate Keys on PBX180">
+    Navigate to the Asterisk keys directory and generate a key pair:
+    
+    ```bash
+    cd /var/lib/asterisk/keys
+    sudo astgenkey -n PBX180
+    ```
+    
+    When prompted for a passphrase, you can press Enter to skip (though using a passphrase is recommended for production).
+    
+    This creates two files:
+    - `PBX180.key` - Private key (keep secure)
+    - `PBX180.pub` - Public key (share with other PBX)
+  </Step>
+  
+  <Step title="Generate Keys on PBX200">
+    Repeat the same process on PBX200:
+    
+    ```bash
+    cd /var/lib/asterisk/keys
+    sudo astgenkey -n PBX200
+    ```
+  </Step>
+  
+  <Step title="Exchange Public Keys">
+    Copy each PBX's public key to the other system using SCP:
+    
+    **From PBX180:**
+    ```bash
+    sudo scp PBX180.pub user@192.168.1.200:/var/lib/asterisk/keys
+    ```
+    
+    **From PBX200:**
+    ```bash
+    sudo scp PBX200.pub user@192.168.1.180:/var/lib/asterisk/keys
+    ```
+  </Step>
+  
+  <Step title="Verify Key Files">
+    Check that all keys are in place:
+    
+    ```bash
+    ls -l /var/lib/asterisk/keys/
+    ```
+    
+    You should see your private key, your public key, and the other PBX's public key.
+  </Step>
+</Steps>
+
+<Note>
+  **Security Best Practice**: In production environments, always use a passphrase when generating keys. Store the passphrase securely and ensure only authorized personnel have access.
+</Note>
+
+## Step 2: Configure dundi.conf
+
+The `dundi.conf` file defines how your PBX participates in the DUNDi network.
+
+### Configuration for PBX180
+
+<Tabs>
+  <Tab title="PBX180 (192.168.1.180)">
+    ```bash
+    sudo vim /etc/asterisk/dundi.conf
+    ```
+    
+    ```ini
+    [general]
+    ttl=32
+    autokill=yes
+    
+    [mappings]
+    priv => dundi-priv-canonical,0,SIP,192.168.1.180/${NUMBER},nopartial
+    priv => dundi-priv-customers,100,SIP,192.168.1.180/${NUMBER},nopartial
+    priv => dundi-priv-via-pstn,400,SIP,192.168.1.180/${NUMBER},nopartial
+    
+    [00:0C:29:52:7C:20] ;MAC address of PBX200
+    model = symmetric
+    host = 192.168.1.200 ;IP of PBX200
+    inkey = PBX200 ;Public key of PBX200
+    outkey = PBX180 ;Private key of PBX180
+    include = priv
+    permit = priv
+    qualify = yes
+    order = primary
+    ```
+  </Tab>
+  
+  <Tab title="PBX200 (192.168.1.200)">
+    ```bash
+    sudo vim /etc/asterisk/dundi.conf
+    ```
+    
+    ```ini
+    [general]
+    ttl=32
+    autokill=yes
+    
+    [mappings]
+    priv => dundi-priv-canonical,0,SIP,192.168.1.200/${NUMBER},nopartial
+    priv => dundi-priv-customers,100,SIP,192.168.1.200/${NUMBER},nopartial
+    priv => dundi-priv-via-pstn,400,SIP,192.168.1.200/${NUMBER},nopartial
+    
+    [00:0C:29:CB:EB:C6] ;MAC address of PBX180
+    model = symmetric
+    host = 192.168.1.180 ;IP of PBX180
+    inkey = PBX180 ;Public key of PBX180
+    outkey = PBX200 ;Private key of PBX200
+    include = priv
+    permit = priv
+    qualify = yes
+    order = primary
+    ```
+  </Tab>
+</Tabs>
+
+### Configuration Parameter Explanation
+
+| Parameter | Description |
+|-----------|-------------|
+| `ttl` | Time-to-live for DUNDi queries (max hops) |
+| `autokill` | Automatically remove stale cache entries |
+| `model` | Connection model (symmetric = bidirectional) |
+| `host` | IP address of the peer PBX |
+| `inkey` | Name of the peer's public key file (without .pub) |
+| `outkey` | Name of your private key file (without .key) |
+| `include` | Which mappings to include in queries to this peer |
+| `permit` | Which mappings this peer can query from us |
+| `qualify` | Enable peer availability checking |
+| `order` | Priority for this peer (primary/secondary) |
+
+<Note>
+  **Important**: The section name (in square brackets) must be the MAC address of the **peer** PBX, not your own. Find the MAC address using `ip a` and look for the `ether` field.
+</Note>
+
+## Step 3: Configure extensions.conf
+
+Add DUNDi-specific contexts to your dialplan.
+
+### Add DUNDi Contexts (Both PBX Systems)
+
+```bash
+sudo vim /etc/asterisk/extensions.conf
+```
+
+<Tabs>
+  <Tab title="PBX180 Configuration">
+    ```ini
+    ;####-INI-DUNDI-####
+    [dundi-priv-canonical]
+    exten => _4XXX,1,Dial(Zap/g1/${EXTEN},20,rtT)
+    
+    [dundi-priv-customers]
+    
+    [dundi-priv-via-pstn]
+    
+    [dundi-priv-local]
+    include => dundi-priv-canonical
+    include => dundi-priv-customers
+    include => dundi-priv-via-pstn
+    
+    [dundi-priv-switch]
+    switch => DUNDi/priv
+    
+    [dundi-priv-lookup]
+    include => dundi-priv-local
+    include => dundi-priv-switch
+    
+    [macro-dundi-priv]
+    exten => s,1,NoOp(Macro dundi-priv de PBX180)
+    same => n,Goto(${ARG1},1)
+    include => dundi-priv-lookup
+    ;####-FIN-DUNDI-####
+    ```
+    
+    Add the following to your `[empleado]` context:
+    ```ini
+    ;####-Conexion DUNDi-####
+    exten => _99999XXXX,1,NoOp(Llamando a ${EXTEN} - ${EXTEN:5})
+    same => n,Macro(dundi-priv,${EXTEN:5})
+    ```
+  </Tab>
+  
+  <Tab title="PBX200 Configuration">
+    ```ini
+    ;####-INI-DUNDI-####
+    [dundi-priv-canonical]
+    exten => _2XXX,1,Dial(Zap/g1/${EXTEN},20,rtT)
+    
+    [dundi-priv-customers]
+    
+    [dundi-priv-via-pstn]
+    
+    [dundi-priv-local]
+    include => dundi-priv-canonical
+    include => dundi-priv-customers
+    include => dundi-priv-via-pstn
+    
+    [dundi-priv-switch]
+    switch => DUNDi/priv
+    
+    [dundi-priv-lookup]
+    include => dundi-priv-local
+    include => dundi-priv-switch
+    
+    [macro-dundi-priv]
+    exten => s,1,NoOp(Macro dundi-priv de PBX200)
+    same => n,Goto(${ARG1},1)
+    include => dundi-priv-lookup
+    ;####-FIN-DUNDI-####
+    ```
+    
+    Add the following to your `[empleado]` context:
+    ```ini
+    ;####-Conexion DUNDi-####
+    exten => _99999XXXX,1,NoOp(Llamando a ${EXTEN} - ${EXTEN:5})
+    same => n,Macro(dundi-priv,${EXTEN:5})
+    ```
+  </Tab>
+</Tabs>
+
+### Dialplan Flow Explanation
+
+When a user dials `999992000` from PBX180:
+
+1. Extension pattern `_99999XXXX` matches
+2. Macro `dundi-priv` is called with `2000` (extracted using `${EXTEN:5}`)
+3. DUNDi lookup queries peer PBX systems for extension `2000`
+4. PBX200 responds that it can handle `2000`
+5. Call is routed to PBX200 via SIP
+6. PBX200 routes to extension `2000` (maría)
+
+## Step 4: Configure sip.conf
+
+Add a SIP peer for DUNDi traffic.
+
+```bash
+sudo vim /etc/asterisk/sip.conf
+```
+
+Add this to **both PBX systems**:
+
+```ini
+[priv]
+type=peer
+context=dundi-priv-local
+disallow=all
+allow=ilbc
+```
+
+This creates a SIP peer that routes incoming DUNDi-resolved calls to the appropriate context.
+
+## Step 5: Reload Asterisk Configuration
+
+Apply all changes by reloading the modules on **both PBX systems**:
+
+```bash
+sudo asterisk -rvvvvvvc
+```
+
+In the Asterisk CLI:
+
+```
+CLI> dialplan reload
+CLI> sip reload
+CLI> module reload pbx_dundi.so
+CLI> module reload res_crypto.so
+```
+
+## Step 6: Verify Configuration
+
+### Check Keys Are Loaded
+
+```
+CLI> keys show
+```
+
+You should see both your private key and the peer's public key listed.
+
+### Check DUNDi Mappings
+
+```
+CLI> dundi show mappings
+```
+
+This displays all configured DUNDi mappings.
+
+### Check DUNDi Peers
+
+```
+CLI> dundi show peers
+```
+
+This should show the peer PBX with status information.
+
+### Test DUNDi Lookup
+
+<Tabs>
+  <Tab title="From PBX180">
+    Test looking up an extension on PBX200:
+    ```
+    CLI> dundi lookup 2000@priv bypass
+    ```
+    
+    Expected output should show PBX200 can handle extension 2000.
+  </Tab>
+  
+  <Tab title="From PBX200">
+    Test looking up an extension on PBX180:
+    ```
+    CLI> dundi lookup 4000@priv bypass
+    ```
+    
+    Expected output should show PBX180 can handle extension 4000.
+  </Tab>
+</Tabs>
+
+## Testing the Connection
+
+### Make a Test Call
+
+1. From a phone registered to PBX180 (e.g., javier at 4000)
+2. Dial `999992000` to call maría on PBX200
+3. Monitor the Asterisk CLI on both systems
+
+### Expected Console Output
+
+**PBX180 Console:**
+```
+NoOp(Llamando a 999992000 - 2000)
+Executing Macro(dundi-priv,2000)
+DUNDi lookup for 2000@priv
+Dial(SIP/192.168.1.200/2000)
+```
+
+**PBX200 Console:**
+```
+Incoming call from 192.168.1.180
+Dialing SIP/maria
+Call answered
+```
+
+## Troubleshooting
+
+### Peer Shows as "Unreachable"
+
+- Verify network connectivity: `ping <peer-ip>`
+- Check firewall settings (port 4520 for DUNDi)
+- Verify MAC address in `dundi.conf` is correct
+
+### "No authority found"
+
+- Check that public keys are properly exchanged
+- Verify `inkey` and `outkey` parameters in `dundi.conf`
+- Ensure key files have correct permissions
+
+### Calls Don't Route
+
+- Check dialplan with `dialplan show`
+- Test DUNDi lookup manually: `dundi lookup <extension>@priv`
+- Verify SIP peer is configured correctly
+
+### Debug Mode
+
+Enable DUNDi debugging:
+```
+CLI> dundi set debug on
+```
+
+This provides detailed information about DUNDi queries and responses.
+
+<Note>
+  Remember to turn off debugging when done: `dundi set debug off`
+</Note>
+
+## Security Best Practices
+
+1. **Use passphrases** on private keys in production
+2. **Restrict access** to `/var/lib/asterisk/keys/` directory
+3. **Use firewalls** to limit DUNDi port access to known peers
+4. **Monitor logs** for unusual DUNDi query patterns
+5. **Regular key rotation** for long-term deployments
+
+## Next Steps
+
+With DUNDi configured, you can:
+
+- Add more PBX systems to your network
+- Implement call routing policies based on time or load
+- Set up redundancy with multiple peers
+- Integrate with the [Call Center Implementation](/advanced/call-center-implementation)

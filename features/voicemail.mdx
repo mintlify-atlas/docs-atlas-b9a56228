@@ -1,0 +1,168 @@
+---
+title: Voicemail
+description: Configure voicemail functionality in Asterisk PBX to allow users to receive and manage voice messages
+---
+
+# Voicemail (Buzón de voz)
+
+Voicemail allows callers to leave voice messages when an extension doesn't answer. Users can then retrieve and manage their messages using their mailbox.
+
+## Overview
+
+The voicemail system enables:
+- Recording messages when calls are unanswered
+- Setting custom PINs for mailbox access
+- Storing messages in multiple audio formats
+- Accessing voicemail from any extension
+
+## Configuration
+
+<Steps>
+
+### Configure voicemail.conf
+
+Edit the voicemail configuration file:
+
+```bash
+sudo vim /etc/asterisk/voicemail.conf
+```
+
+Define mailboxes under the `[default]` context:
+
+```ini
+[default]
+4000 => 1234,Javier,javier@ejemplo.com
+4001 => 1234,Belen,belen@ejemplo.com
+```
+
+The format is:
+```
+mailbox_number => pin,name,email
+```
+
+Where:
+- **4000** - Mailbox number (typically matches extension)
+- **1234** - PIN for accessing the mailbox
+- **Javier** - Mailbox owner name
+- **javier@ejemplo.com** - Email for notifications
+
+### Reload voicemail configuration
+
+From the Asterisk CLI:
+
+```
+CLI> voicemail reload
+```
+
+Verify the configuration:
+
+```
+CLI> voicemail show users
+```
+
+### Configure extensions.conf
+
+Add voicemail functionality to your dial plan:
+
+```bash
+sudo vim /etc/asterisk/extensions.conf
+```
+
+Configure extensions with voicemail:
+
+```ini
+[empleado]
+exten => 4000,1,NoOp(Llamando a Javier)
+same => n,Dial(SIP/javier,15)
+same => n,VoiceMail(${EXTEN})
+same => n,Hangup()
+
+exten => 4001,1,NoOp(Llamando a Belen)
+same => n,Dial(SIP/belen,15)
+same => n,VoiceMail(${EXTEN})
+same => n,Hangup()
+```
+
+The `Dial(SIP/javier,15)` rings for 15 seconds before going to voicemail.
+
+### Add voicemail access extensions
+
+Allow users to check their voicemail:
+
+```ini
+exten => *4000,1,VoiceMailMain(4000)
+same => n,Hangup()
+
+exten => *4001,1,VoiceMailMain(4001)
+same => n,Hangup()
+```
+
+Users dial `*` + their extension number to access their mailbox.
+
+### Reload the dial plan
+
+```
+CLI> dialplan reload
+```
+
+</Steps>
+
+## Message Storage
+
+Voicemail messages are stored in:
+
+```bash
+/var/spool/asterisk/voicemail/default/{mailbox}/INBOX/
+```
+
+Messages are saved in multiple formats:
+- **wav49** - GSM compressed WAV
+- **gsm** - GSM format
+- **wav** - Standard WAV format
+
+Example:
+```bash
+ls -l /var/spool/asterisk/voicemail/default/4001/INBOX
+```
+
+## Usage
+
+### Leaving a message
+
+1. Call an extension (e.g., 4001)
+2. Wait 15 seconds (ring timeout)
+3. Hear the voicemail greeting in Spanish
+4. Record your message after the beep
+5. Hang up or press # to finish
+
+### Checking voicemail
+
+1. Dial `*` + your extension (e.g., `*4001`)
+2. Enter your PIN when prompted (e.g., `1234`)
+3. Follow voice prompts to:
+   - Listen to messages
+   - Delete messages
+   - Save messages
+   - Forward messages
+
+## Customization
+
+You can customize voicemail settings in `voicemail.conf`:
+
+```ini
+[general]
+format=wav49|gsm|wav
+serveremail=asterisk
+attach=yes
+skipms=3000
+maxsilence=10
+silencethreshold=128
+maxlogins=3
+```
+
+## Troubleshooting
+
+- Verify mailbox configuration: `voicemail show users`
+- Check permissions on `/var/spool/asterisk/voicemail/`
+- Ensure Spanish language files are installed
+- Monitor Asterisk console for error messages during calls

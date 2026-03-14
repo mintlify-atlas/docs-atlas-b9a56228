@@ -1,0 +1,103 @@
+---
+title: Technical Requirements
+description: System requirements and technical specifications for the Asterisk PBX Tutorial
+---
+
+## System Specifications
+
+This tutorial uses specific versions of software and operating systems that have been tested to work together. While newer versions may work, these specifications ensure compatibility with all examples in the tutorial.
+
+### Operating System
+
+**Debian 9.11 (Stretch)**
+
+- Distribution: [Debian 9.11](https://www.debian.org/releases/stretch/debian-installer/)
+- Shell: GNU bash, version 4.4.12[1]-release
+- Architecture: x86_64-pc-linux-gnu
+- Interface: No graphical interface (command-line only)
+
+<Note>
+  The tutorial uses a minimal Debian installation without a desktop environment to reduce resource usage and focus on server administration.
+</Note>
+
+### Asterisk Version
+
+**Asterisk 15.17.1**
+
+- Download: [Asterisk 15.17.1](http://downloads.asterisk.org/pub/telephony/asterisk/releases/)
+- Type: Open-source PBX (Private Branch Exchange)
+
+<Info>
+  Asterisk 15 is a Standard release with long-term support, making it suitable for learning and production environments.
+</Info>
+
+### Virtualization Platform
+
+**VMware® Workstation 14 Player**
+
+- Version: 14.1.8 build-14921873
+- Network Mode: Bridged
+
+<Tip>
+  Bridged networking mode allows the virtual machine to appear as a separate device on your network, making it easier to connect via SSH and test with SIP clients.
+</Tip>
+
+## Required Software Installation
+
+### Sudo Access
+
+The operating system requires the `sudo` program to be installed for convenient superuser access, similar to Ubuntu.
+
+<Warning>
+  You must have root access initially to install sudo and configure your user account.
+</Warning>
+
+**Installation steps:**
+
+1. Switch to root user:
+
+```shell
+$ su
+```
+
+2. Install sudo:
+
+```shell
+$ apt-get install sudo
+```
+
+3. Add your user to the sudo group:
+
+```shell
+$ adduser username sudo
+```
+
+<Note>
+  Replace `username` with your actual username. You'll need to log out and back in for the group changes to take effect.
+</Note>
+
+## Network Configuration
+
+The tutorial assumes:
+
+- Network interface: `ens33` (typical for VMware)
+- Static IP address: `192.168.0.180` (configurable)
+- Connection type: Bridged mode
+
+<Tip>
+  Using a static IP address is highly recommended for easier SSH access and consistent SIP client configuration.
+</Tip>
+
+## Additional Components
+
+Throughout the tutorial, you will install additional components including:
+
+- **OpenSSH**: For remote server access
+- **MariaDB**: For database integration
+- **ODBC Connector**: For Asterisk-MariaDB communication
+- **Festival**: For text-to-speech functionality
+- **Various Asterisk modules**: For enhanced PBX features
+
+<Info>
+  All dependencies and additional software will be covered in their respective sections with detailed installation instructions.
+</Info>

@@ -1,0 +1,178 @@
+---
+title: Call Transfer
+description: Enable call transfer functionality in Asterisk PBX to redirect active calls to different extensions
+---
+
+# Call Transfer (Redirección/transferencia de llamadas)
+
+Call transfer allows users to redirect an active call to another extension. This is a client-side feature that depends on the softphone capabilities.
+
+## Overview
+
+Call transfer enables:
+- Redirecting calls to different extensions
+- Transferring calls without dropping the connection
+- Routing calls to automated services or other users
+
+## Adding Custom Audio
+
+To demonstrate call transfers, you can add custom audio files that play when transferred to specific extensions.
+
+<Steps>
+
+### Convert audio to sln16 format
+
+Use `sox` to convert MP3 files to the appropriate format:
+
+```bash
+sox file.mp3 --type raw --encoding signed-integer --bits 16 --channels 1 --rate 16k file.sln16
+```
+
+### Convert to additional formats
+
+Create the conversion script used earlier to generate multiple formats:
+
+```bash
+cd /var/lib/asterisk/sounds/es/
+sudo ./convertir
+```
+
+This creates `.gsm`, `.alaw`, and `.ulaw` versions from the `.sln16` file.
+
+### Upload audio files
+
+Use SFTP (FileZilla or similar) to upload your converted audio files to:
+
+```
+/var/lib/asterisk/sounds/es/[your-folder]/
+```
+
+For example, create a `mimusica` folder and upload your audio there.
+
+</Steps>
+
+## Configuration
+
+### Create a transfer destination extension
+
+Edit your dial plan:
+
+```bash
+sudo vim /etc/asterisk/extensions.conf
+```
+
+Add a test extension that plays audio:
+
+```ini
+[empleado]
+exten => 100,1,NoOp(Centralita de distribucion de llamadas)
+same => n,Playback(silence/1)
+same => n,Playback(mimusica/primavera)
+same => n,Hangup()
+```
+
+This extension (100) plays a 1-second silence, then plays your custom audio.
+
+### Reload the dial plan
+
+```
+CLI> dialplan reload
+```
+
+## Usage Examples
+
+### Transferring a call (Pangolin softphone)
+
+<Steps>
+
+1. Receive or make a call (e.g., call from extension 4001 to 4000)
+2. While on the call, press the **Transfer** button
+3. Enter the destination extension (e.g., `100`)
+4. Complete the transfer
+
+</Steps>
+
+The other party will be transferred to extension 100 and hear the custom audio.
+
+### Transferring a call (Blink softphone)
+
+<Steps>
+
+1. Make a call to the person you want to transfer
+2. While on that call, make a second call to the transfer destination
+3. Hold down the **Alt** key
+4. Drag the first session onto the second session
+5. The call is transferred
+
+</Steps>
+
+## Configuration Files Example
+
+### extensions.conf - Complete example
+
+```ini
+[empleado]
+; Regular extensions with voicemail
+exten => 4000,1,NoOp(Llamando a Javier)
+same => n,Dial(SIP/javier,15)
+same => n,VoiceMail(${EXTEN})
+same => n,Hangup()
+
+exten => 4001,1,NoOp(Llamando a Belen)
+same => n,Dial(SIP/belen,15)
+same => n,VoiceMail(${EXTEN})
+same => n,Hangup()
+
+; Transfer destination with audio playback
+exten => 100,1,NoOp(Centralita de distribucion de llamadas)
+same => n,Playback(silence/1)
+same => n,Playback(mimusica/primavera)
+same => n,Hangup()
+
+; Voicemail access
+exten => *4000,1,VoiceMailMain(4000)
+same => n,Hangup()
+
+exten => *4001,1,VoiceMailMain(4001)
+same => n,Hangup()
+```
+
+## Supported Audio Formats
+
+Asterisk supports multiple audio formats. The `Playback` application automatically selects the best format:
+
+- **sln16** - 16-bit signed linear (16kHz)
+- **gsm** - GSM compressed
+- **alaw** - A-law compressed
+- **ulaw** - μ-law compressed
+- **wav** - WAV format
+- **wav49** - WAV with GSM compression
+
+## File Paths
+
+Audio files are referenced relative to:
+
+```
+/var/lib/asterisk/sounds/es/
+```
+
+So `Playback(mimusica/primavera)` looks for:
+
+```
+/var/lib/asterisk/sounds/es/mimusica/primavera.*
+```
+
+## Troubleshooting
+
+- Ensure audio files exist in the correct directory
+- Check file permissions (should be owned by `asterisk:asterisk`)
+- Verify multiple formats are available for best compatibility
+- Test the transfer destination extension independently first
+- Check your softphone supports call transfer functionality
+
+## Notes
+
+- Call transfer is primarily a **client-side** feature
+- Different softphones have different transfer methods
+- The PBX handles the routing after transfer is initiated
+- Some softphones support blind transfer (immediate) or attended transfer (with consultation)

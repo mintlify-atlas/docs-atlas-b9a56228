@@ -1,0 +1,454 @@
+---
+title: 'Logging and Call Records'
+description: 'Configure Asterisk logging to track calls, debug issues, and maintain call detail records'
+---
+
+## Overview
+
+Asterisk provides comprehensive logging capabilities for monitoring system activity, debugging issues, and maintaining call records. This guide covers both the verbose logging system and Call Detail Records (CDR).
+
+## Asterisk Log Files
+
+Asterisk stores logs in `/var/log/asterisk/`. The main log file is `messages`, which contains system events, warnings, and errors.
+
+### Viewing Logs
+
+View recent log entries:
+
+```bash
+tail /var/log/asterisk/messages
+```
+
+Monitor logs in real-time:
+
+```bash
+tail -f /var/log/asterisk/messages
+```
+
+Search for specific events:
+
+```bash
+grep "ERROR" /var/log/asterisk/messages
+grep "extension" /var/log/asterisk/messages
+```
+
+## Logger Configuration
+
+The logging system is configured in `/etc/asterisk/logger.conf`.
+
+### Default Configuration
+
+View current logger configuration from the Asterisk console:
+
+```
+CLI> logger show channels
+```
+
+Typical output:
+```
+Channel              Type     Status    Configuration
+-------              ----     ------    -------------
+console              Console  Enabled   notice,warning,error
+messages             File     Enabled   notice,warning,error
+```
+
+<Note>
+By default, the console shows verbose messages, but the `messages` file only logs warnings and errors.
+</Note>
+
+## Enabling Verbose Logging
+
+To capture detailed call information in log files, enable verbose logging.
+
+### Configuration Steps
+
+<Steps>
+
+<Step title="Edit logger.conf">
+Modify `/etc/asterisk/logger.conf`:
+
+```bash
+sudo vim /etc/asterisk/logger.conf
+```
+
+Under the `[logfiles]` section, add `verbose(3)` to the messages line:
+
+```ini logger.conf
+[logfiles]
+console => notice,warning,error
+messages => notice,warning,error,verbose(3)
+```
+
+**Verbose Levels:**
+- `verbose(1)` - Minimal verbosity
+- `verbose(3)` - Standard detail (recommended)
+- `verbose(5)` - Maximum verbosity
+</Step>
+
+<Step title="Reload logger">
+Reload the logger configuration:
+
+```
+CLI> logger reload
+```
+</Step>
+
+<Step title="Verify configuration">
+Confirm the new settings:
+
+```
+CLI> logger show channels
+```
+
+You should see:
+```
+messages             File     Enabled   notice,warning,error,verbose(3)
+```
+</Step>
+
+</Steps>
+
+### Testing Verbose Logging
+
+Make a test call and check the logs:
+
+```bash
+tail -n 15 /var/log/asterisk/messages
+```
+
+You should now see detailed call flow information:
+```
+[Jan 15 10:23:45] VERBOSE[12345] pbx.c: -- Executing [4001@empleado:1] NoOp("SIP/javier-00000001", "Llamando a Belen") in new stack
+[Jan 15 10:23:45] VERBOSE[12345] pbx.c: -- Executing [4001@empleado:2] Dial("SIP/javier-00000001", "SIP/belen,15") in new stack
+[Jan 15 10:23:45] VERBOSE[12345] app_dial.c: -- Called SIP/belen
+[Jan 15 10:23:47] VERBOSE[12345] app_dial.c: -- SIP/belen-00000002 is ringing
+```
+
+<Warning>
+**Performance Impact:**
+
+Verbose logging significantly increases log file size. Use it selectively:
+- Enable during troubleshooting or testing
+- Disable in production to conserve disk space
+- Implement log rotation to manage file sizes
+</Warning>
+
+## Log Levels
+
+Asterisk supports multiple log levels:
+
+| Level | Description | Use Case |
+|-------|-------------|----------|
+| `debug` | Detailed debugging information | Development and deep troubleshooting |
+| `notice` | Normal but significant events | Standard operation monitoring |
+| `warning` | Warning messages | Potential issues |
+| `error` | Error messages | Critical problems |
+| `verbose` | Call flow and dialplan execution | Call tracing and debugging |
+| `dtmf` | DTMF tones | Debugging IVR and menu systems |
+| `security` | Security-related events | Audit and intrusion detection |
+
+### Example Multi-Level Configuration
+
+```ini logger.conf
+[logfiles]
+console => notice,warning,error
+messages => notice,warning,error,verbose(3)
+full => notice,warning,error,debug,verbose,dtmf
+security => security
+```
+
+This creates:
+- `messages` - Standard logs with verbose call info
+- `full` - Everything including debug messages
+- `security` - Security events only
+
+## Call Detail Records (CDR)
+
+Asterisk automatically generates Call Detail Records in CSV format.
+
+### Master.csv
+
+CDR data is stored in `/var/log/asterisk/cdr-csv/Master.csv`.
+
+### Viewing CDR Data
+
+View in a readable format:
+
+```bash
+column -s, -t < /var/log/asterisk/cdr-csv/Master.csv | less -#2 -N -S
+```
+
+**CDR Fields:**
+1. Account code
+2. Source (caller)
+3. Destination (called party)
+4. Destination context
+5. Caller ID
+6. Channel
+7. Destination channel
+8. Last application
+9. Last data
+10. Start time
+11. Answer time
+12. End time
+13. Duration (seconds)
+14. Billable seconds
+15. Disposition (ANSWERED, NO ANSWER, BUSY, FAILED)
+16. AMA flags
+17. Unique ID
+18. User field
+
+### CDR Example
+
+```csv
+"","javier","4001","empleado","javier","SIP/javier-00000001","SIP/belen-00000002","Dial","SIP/belen,15","2024-01-15 10:23:45","2024-01-15 10:23:47","2024-01-15 10:25:12","87","85","ANSWERED","3","1705318425.1",""
+```
+
+This shows:
+- Caller: javier
+- Called: 4001 (belen)
+- Duration: 87 seconds
+- Billable: 85 seconds
+- Status: ANSWERED
+
+## Console Logging
+
+Control verbosity in the Asterisk CLI:
+
+### Set Verbosity Level
+
+```
+CLI> core set verbose 3
+```
+
+Levels:
+- `0` - Silent
+- `3` - Standard (shows call flow)
+- `5` - Detailed (shows all dialplan execution)
+- `10` - Maximum (shows everything)
+
+### Set Debug Level
+
+```
+CLI> core set debug 3
+```
+
+Higher debug levels produce more detailed output.
+
+## Log Rotation
+
+Manage log file sizes with rotation:
+
+### Configure Rotation Strategy
+
+In `logger.conf`:
+
+```ini logger.conf
+[general]
+rotatestrategy = rotate
+```
+
+**Strategies:**
+- `none` - No rotation (manage externally)
+- `sequential` - Numbered files, newest has highest number
+- `rotate` - Numbered files, oldest has highest number
+- `timestamp` - Files named by timestamp
+
+### Manual Rotation
+
+```
+CLI> logger rotate
+```
+
+### Automated Rotation with Logrotate
+
+Create `/etc/logrotate.d/asterisk`:
+
+```bash
+/var/log/asterisk/messages {
+    daily
+    rotate 7
+    compress
+    delaycompress
+    missingok
+    notifempty
+    sharedscripts
+    postrotate
+        /usr/sbin/asterisk -rx 'logger reload' > /dev/null 2>&1
+    endscript
+}
+
+/var/log/asterisk/cdr-csv/Master.csv {
+    monthly
+    rotate 12
+    compress
+    missingok
+    notifempty
+}
+```
+
+This rotates:
+- Log files daily, keeping 7 days
+- CDR files monthly, keeping 12 months
+
+## Syslog Integration
+
+Send Asterisk logs to syslog:
+
+```ini logger.conf
+[logfiles]
+console => notice,warning,error
+messages => notice,warning,error
+syslog.local0 => notice,warning,error
+```
+
+Configure syslog in `/etc/rsyslog.conf`:
+
+```
+local0.*                        /var/log/asterisk-syslog.log
+```
+
+Restart syslog:
+
+```bash
+sudo systemctl restart rsyslog
+```
+
+## Debugging Specific Issues
+
+### SIP Debugging
+
+Enable SIP packet debugging:
+
+```
+CLI> sip set debug on
+```
+
+Disable when done:
+
+```
+CLI> sip set debug off
+```
+
+Debug specific peer:
+
+```
+CLI> sip set debug peer javier
+```
+
+### Dialplan Debugging
+
+View dialplan execution:
+
+```
+CLI> core set verbose 5
+CLI> dialplan show empleado
+```
+
+### RTP Debugging
+
+Debug audio/video streams:
+
+```
+CLI> rtp set debug on
+```
+
+## Performance Monitoring
+
+### Active Calls
+
+```
+CLI> core show calls
+```
+
+### Channel Status
+
+```
+CLI> core show channels
+```
+
+### System Load
+
+```
+CLI> core show taskprocessors
+```
+
+## Security Logging
+
+Enable security event logging:
+
+```ini logger.conf
+[logfiles]
+security => security
+```
+
+Security events include:
+- Failed authentication attempts
+- Unauthorized call attempts
+- Configuration changes
+
+View security log:
+
+```bash
+tail -f /var/log/asterisk/security
+```
+
+## Best Practices
+
+<Steps>
+
+<Step title="Use appropriate verbosity">
+- Production: `notice,warning,error` only
+- Testing: Add `verbose(3)`
+- Debugging: Add `debug`
+</Step>
+
+<Step title="Implement log rotation">
+Prevents disk space issues and maintains historical data.
+</Step>
+
+<Step title="Monitor security logs">
+Regularly review for suspicious activity.
+</Step>
+
+<Step title="Archive CDR data">
+Retain for billing, compliance, and analysis.
+</Step>
+
+<Step title="Document log locations">
+Ensure operations team knows where to find logs.
+</Step>
+
+</Steps>
+
+## Troubleshooting
+
+### No Logs Being Written
+
+Check file permissions:
+
+```bash
+ls -l /var/log/asterisk/
+sudo chown asterisk:asterisk /var/log/asterisk/*
+```
+
+### Log Files Growing Too Large
+
+1. Reduce verbosity
+2. Implement log rotation
+3. Archive old logs
+
+### Missing Call Details
+
+Enable verbose logging and check CDR configuration:
+
+```
+CLI> module show like cdr
+CLI> cdr status
+```
+
+## Next Steps
+
+- Set up [Call Queues](/features/call-queues) and monitor queue performance via logs
+- Configure [Business Hours](/features/business-hours) and track off-hours attempts
+- Implement [Call Security](/features/call-security) and audit TLS connections

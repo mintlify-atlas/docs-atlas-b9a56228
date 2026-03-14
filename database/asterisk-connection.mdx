@@ -1,0 +1,272 @@
+---
+title: Asterisk Connection Configuration
+description: Configure Asterisk to connect to MariaDB through ODBC
+---
+
+## Overview
+
+To enable Asterisk to communicate with MariaDB, you need to recompile Asterisk with ODBC support and configure the necessary modules.
+
+## Recompiling Asterisk with ODBC
+
+<Steps>
+  <Step title="Navigate to Asterisk source directory">
+    Go to the directory where you originally extracted Asterisk:
+
+    ```bash
+    cd /usr/src/asterisk-15.7.1/
+    ```
+
+    <Note>
+      Adjust the path to match your Asterisk version and installation location.
+    </Note>
+  </Step>
+
+  <Step title="Run configure">
+    Regenerate the build configuration:
+
+    ```bash
+    sudo ./configure
+    ```
+  </Step>
+
+  <Step title="Select ODBC modules">
+    Launch the module selection menu:
+
+    ```bash
+    sudo make menuselect
+    ```
+  </Step>
+
+  <Step title="Enable required modules">
+    Navigate through the menu and enable the following modules:
+
+    **Call Detail Recording:**
+    - `cdr_odbc`
+    - `cdr_adaptive_odbc`
+
+    **Dialplan Functions:**
+    - `func_odbc`
+    - `func_realtime`
+
+    **PBX Modules:**
+    - `pbx_realtime`
+
+    **Resource Modules:**
+    - `res_config_odbc`
+    - `res_odbc`
+
+    <Tip>
+      Use the arrow keys to navigate, spacebar to select/deselect modules, and Enter to confirm selections.
+    </Tip>
+  </Step>
+
+  <Step title="Save and install">
+    Press "Save & Exit" in the menu, then install the modules:
+
+    ```bash
+    sudo make install
+    ```
+  </Step>
+</Steps>
+
+## Module Configuration
+
+### res_odbc.conf
+
+The `res_odbc.conf` file configures Asterisk's ODBC resource module to connect to your database.
+
+<Steps>
+  <Step title="Edit res_odbc.conf">
+    Open the configuration file:
+
+    ```bash
+    sudo vim /etc/asterisk/res_odbc.conf
+    ```
+  </Step>
+
+  <Step title="Add Asterisk context">
+    Add the following configuration:
+
+    ```ini
+    [asterisk]
+    enabled => yes
+    dsn => asterisk-connector
+    username => asterisk
+    password => asterisk
+    pre-connect => yes
+    ```
+
+    **Parameter explanation:**
+    - **enabled**: Activates this ODBC connection
+    - **dsn**: References the Data Source Name from `/etc/odbc.ini`
+    - **username**: MariaDB username (created in [MariaDB setup](/database/mariadb-setup))
+    - **password**: MariaDB password for the user
+    - **pre-connect**: Maintains connection while module is loaded for better performance
+  </Step>
+
+  <Step title="Reload the module">
+    Access the Asterisk CLI and reload the ODBC module:
+
+    ```bash
+    asterisk -rvvv
+    ```
+
+    Then in the CLI:
+
+    ```
+    CLI> module reload res_odbc.so
+    ```
+  </Step>
+
+  <Step title="Verify connection">
+    Check that the ODBC connection is active:
+
+    ```
+    CLI> odbc show
+    ```
+
+    You should see output showing the `asterisk` connection as connected:
+
+    ```
+    ODBC DSN Settings
+    -----------------
+    Name:   asterisk
+    DSN:    asterisk-connector
+      Last connection attempt: 1970-01-01 00:00:00
+      Connected: Yes
+    ```
+  </Step>
+</Steps>
+
+### func_odbc.conf
+
+The `func_odbc.conf` file defines custom SQL functions that can be called from the dialplan.
+
+<Steps>
+  <Step title="Edit func_odbc.conf">
+    Open the configuration file:
+
+    ```bash
+    sudo vim /etc/asterisk/func_odbc.conf
+    ```
+  </Step>
+
+  <Step title="Define SQL function">
+    Create a function named `info` that retrieves user information:
+
+    ```ini
+    [info]
+    dsn=asterisk
+    readsql=SELECT CONCAT(nombre,' con extension ', extension) from usuarios WHERE nombre='${SQL_ESC(${ARG1})}'
+    ```
+
+    **Function breakdown:**
+    - **[info]**: Function name that will be called as `ODBC_info()`
+    - **dsn**: References the context from `res_odbc.conf`
+    - **readsql**: SQL query executed when function is called for reading
+    - **${SQL_ESC()}**: Sanitizes input to prevent SQL injection
+    - **${ARG1}**: First argument passed to the function
+  </Step>
+</Steps>
+
+## Understanding ODBC Functions
+
+### Function Types
+
+The `func_odbc.conf` file supports different SQL operation types:
+
+- **readsql**: SELECT queries that retrieve data
+- **writesql**: INSERT, UPDATE, DELETE queries that modify data
+- **insertsql**: Specifically for INSERT operations
+- **deletesql**: Specifically for DELETE operations
+
+### SQL_ESC Function
+
+The `${SQL_ESC()}` function is critical for security. It escapes special characters in user input to prevent SQL injection attacks.
+
+**Example without SQL_ESC (vulnerable):**
+```sql
+WHERE nombre='${ARG1}'
+```
+
+**Example with SQL_ESC (secure):**
+```sql
+WHERE nombre='${SQL_ESC(${ARG1})}'
+```
+
+<Warning>
+  Always use `${SQL_ESC()}` when incorporating dialplan variables into SQL queries to prevent SQL injection vulnerabilities.
+</Warning>
+
+### Using Multiple Arguments
+
+You can pass multiple arguments to ODBC functions:
+
+```ini
+[update_user]
+dsn=asterisk
+writesql=UPDATE usuarios SET extension='${SQL_ESC(${ARG2})}' WHERE nombre='${SQL_ESC(${ARG1})}'
+```
+
+Call it from the dialplan:
+```
+Set(result=${ODBC_update_user(javier,4050)})
+```
+
+## Verifying the Configuration
+
+<Steps>
+  <Step title="Reload func_odbc module">
+    In the Asterisk CLI:
+
+    ```
+    CLI> module reload func_odbc.so
+    ```
+  </Step>
+
+  <Step title="Check module status">
+    Verify both modules are loaded:
+
+    ```
+    CLI> module show like odbc
+    ```
+
+    You should see:
+    - `res_odbc.so`
+    - `func_odbc.so`
+    - `res_config_odbc.so`
+  </Step>
+
+  <Step title="Test ODBC function">
+    Test the function directly from the CLI:
+
+    ```
+    CLI> dialplan eval "\${ODBC_info(javier)}"
+    ```
+
+    Expected output:
+    ```
+    javier con extension 4000
+    ```
+  </Step>
+</Steps>
+
+## Configuration Files Summary
+
+<CardGroup cols={2}>
+  <Card title="res_odbc.conf" icon="database">
+    Defines database connections that Asterisk can use
+  </Card>
+  <Card title="func_odbc.conf" icon="code">
+    Defines custom SQL functions callable from the dialplan
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+With Asterisk configured to connect to MariaDB:
+
+1. [Test the integration](/database/testing) with a working dialplan example
+2. Create more complex ODBC functions for your use case
+3. Explore Asterisk Realtime Architecture (ARA) for dynamic configuration

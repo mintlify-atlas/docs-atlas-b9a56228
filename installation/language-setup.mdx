@@ -1,0 +1,158 @@
+---
+title: Language Setup
+description: Configure Asterisk to use Spanish language prompts
+---
+
+By default, Asterisk comes with English sound files. This guide shows you how to install and configure Spanish language prompts.
+
+## Download Spanish Sound Files
+
+The sound files are located in `/var/lib/asterisk/sounds/`. We'll download Spanish sounds from the Junta de Andalucía.
+
+<Steps>
+  <Step title="Create Spanish sounds directory">
+    ```shell
+    mkdir /var/lib/asterisk/sounds/es
+    ```
+  </Step>
+
+  <Step title="Navigate to Spanish directory">
+    ```shell
+    cd /var/lib/asterisk/sounds/es
+    ```
+  </Step>
+
+  <Step title="Download core sounds">
+    ```shell
+    wget -O core.zip https://www.asterisksounds.org/es-es/download/asterisk-sounds-core-es-ES-sln16.zip
+    ```
+  </Step>
+
+  <Step title="Download extra sounds">
+    ```shell
+    wget -O extra.zip https://www.asterisksounds.org/es-es/download/asterisk-sounds-extra-es-ES-sln16.zip
+    ```
+  </Step>
+
+  <Step title="Extract the files">
+    ```shell
+    unzip core.zip
+    ```
+
+    ```shell
+    unzip extra.zip
+    ```
+  </Step>
+
+  <Step title="Set ownership">
+    ```shell
+    sudo chown -R asterisk.asterisk /var/lib/asterisk/sounds/es
+    ```
+  </Step>
+</Steps>
+
+## Convert Sound Files
+
+Asterisk needs sound files in multiple formats. We'll use `sox` to convert them.
+
+<Steps>
+  <Step title="Install sox">
+    ```shell
+    sudo apt-get install sox
+    ```
+  </Step>
+
+  <Step title="Create conversion script">
+    Navigate to the Spanish sounds directory:
+
+    ```shell
+    cd /var/lib/asterisk/sounds/es/
+    ```
+
+    Create a script named `convertir`:
+
+    ```shell
+    sudo vim convertir
+    ```
+
+    Add the following content:
+
+    ```bash
+    #!/bin/bash
+    for a in $(find . -name '*.sln16'); do
+      sox -t raw -e signed-integer -b 16 -c 1 -r 16k $a -t gsm -r 8k `echo $a|sed "s/.sln16/.gsm/"`;
+      sox -t raw -e signed-integer -b 16 -c 1 -r 16k $a -t raw -r 8k -e a-law `echo $a|sed "s/.sln16/.alaw/"`;
+      sox -t raw -e signed-integer -b 16 -c 1 -r 16k $a -t raw -r 8k -e mu-law `echo $a|sed "s/.sln16/.ulaw/"`;
+    done
+    ```
+  </Step>
+
+  <Step title="Make script executable">
+    ```shell
+    sudo chmod +x convertir
+    ```
+  </Step>
+
+  <Step title="Run the conversion script">
+    ```shell
+    sudo ./convertir
+    ```
+
+    <Warning>
+      This process may take several minutes as it converts all sound files to multiple formats.
+    </Warning>
+  </Step>
+</Steps>
+
+## Configure Default Language
+
+<Steps>
+  <Step title="Edit sip.conf">
+    Modify the SIP configuration to set Spanish as the default language:
+
+    ```shell
+    sudo vim /etc/asterisk/sip.conf
+    ```
+
+    Add under the `[general]` section:
+
+    ```conf
+    [general]
+    language=es
+    ```
+  </Step>
+
+  <Step title="Reload SIP configuration">
+    Access the Asterisk CLI:
+
+    ```shell
+    sudo asterisk -rvvvvvvc
+    ```
+
+    Reload the SIP module:
+
+    ```
+    CLI> sip reload
+    ```
+  </Step>
+</Steps>
+
+## Available Voice Options
+
+The downloaded Spanish voices include:
+
+- **JuntaDeAndalucia_es_pa_diphone**: Male voice
+- **JuntaDeAndalucia_es_sf_diphone**: Female voice
+
+You can verify these by checking:
+
+```shell
+ls -l /usr/share/festival/voices/spanish/
+```
+
+## Next Steps
+
+With language configuration complete, you're ready to:
+- [Test your installation](/installation/testing)
+- Configure users and extensions
+- Set up voicemail with Spanish prompts

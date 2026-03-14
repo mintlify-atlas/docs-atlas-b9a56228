@@ -1,0 +1,405 @@
+---
+title: 'Configuration Files'
+description: 'Overview of main Asterisk configuration files and their purposes'
+icon: 'file-code'
+---
+
+## Overview
+
+Asterisk's behavior is controlled by configuration files located in `/etc/asterisk/`. This guide provides an overview of the main configuration files you'll work with when setting up and managing your PBX.
+
+<Note>
+Before modifying configuration files, always create backups:
+```bash
+cd /etc/asterisk
+sudo cp filename.conf filename.conf.bck
+```
+</Note>
+
+## Core Configuration Files
+
+### sip.conf
+
+**Purpose:** Configures SIP channel driver, peer definitions, and SIP-related settings.
+
+**Location:** `/etc/asterisk/sip.conf`
+
+**Key Sections:**
+- `[general]` - Global SIP settings (port, language, codecs)
+- `[username]` - Individual SIP peer/user definitions
+
+**Common Settings:**
+```ini
+[general]
+port=5060                    ; SIP listening port
+directmedia=no               ; Prevent direct RTP between endpoints
+language=es                  ; Default language
+context=public               ; Default context for incoming calls
+
+[username]
+type=friend                  ; Allow both incoming and outgoing calls
+secret=password              ; Authentication password
+host=dynamic                 ; Dynamic IP registration
+context=internal             ; Dialplan context
+callgroup=1                  ; Call group for pickup
+pickupgroup=1                ; Groups this peer can pickup from
+```
+
+**Related Documentation:**
+- [SIP Configuration Guide](/config/sip-conf)
+- [User Management](/config/sip-conf)
+
+---
+
+### extensions.conf
+
+**Purpose:** Defines the dialplan - the logic that controls call routing and handling.
+
+**Location:** `/etc/asterisk/extensions.conf`
+
+**Key Concepts:**
+- **Contexts:** Logical groupings of extensions (e.g., `[internal]`, `[external]`)
+- **Extensions:** Patterns that match dialed numbers
+- **Priorities:** Sequential steps in call handling
+
+**Example:**
+```ini
+[general]
+static=yes
+writeprotect=no
+
+[internal]
+; Basic extension
+exten => 4000,1,Dial(SIP/user1,20)
+same => n,VoiceMail(4000)
+same => n,Hangup()
+
+; Pattern matching
+exten => _4XXX,1,Dial(SIP/${EXTEN})
+
+; Feature codes
+exten => *97,1,VoiceMailMain(${CALLERID(num)})
+```
+
+**Related Documentation:**
+- [Dialplan Basics](/config/extensions-conf)
+- [Call Routing](/config/extensions-conf)
+- [IVR Setup](/features/text-to-speech)
+
+---
+
+### voicemail.conf
+
+**Purpose:** Configures voicemail system and mailbox definitions.
+
+**Location:** `/etc/asterisk/voicemail.conf`
+
+**Key Sections:**
+- `[general]` - Voicemail system settings
+- `[default]` - Default context for mailboxes
+- Mailbox definitions in format: `mailbox => pin,name,email`
+
+**Example:**
+```ini
+[general]
+format=wav49|gsm|wav         ; Audio formats
+serveremail=asterisk         ; From address for emails
+attach=yes                   ; Attach voicemail to email
+maxlogins=3                  ; Max failed login attempts
+
+[default]
+4000 => 1234,John Doe,john@example.com
+4001 => 5678,Jane Smith,jane@example.com
+```
+
+**Related Documentation:**
+- [Voicemail Setup](/features/voicemail)
+- [Email Integration](/features/voicemail#email-notifications)
+
+---
+
+### queues.conf
+
+**Purpose:** Configures call queues for distributing incoming calls to multiple agents.
+
+**Location:** `/etc/asterisk/queues.conf`
+
+**Key Settings:**
+- `strategy` - How calls are distributed (ringall, leastrecent, fewestcalls, etc.)
+- `timeout` - How long to ring each agent
+- `member` - Queue members/agents
+
+**Example:**
+```ini
+[general]
+persistentmembers=yes        ; Remember dynamic members
+monitor-type=MixMonitor      ; Call recording type
+
+[support]
+strategy=leastrecent         ; Call agent with oldest completed call
+timeout=30                   ; Ring for 30 seconds
+member => SIP/agent1
+member => SIP/agent2
+member => SIP/agent3
+```
+
+**Distribution Strategies:**
+- `ringall` - Ring all available agents simultaneously
+- `leastrecent` - Agent who least recently answered
+- `fewestcalls` - Agent with fewest completed calls
+- `random` - Random available agent
+- `rrmemory` - Round robin with memory
+
+**Related Documentation:**
+- [Call Queues](/features/call-queues)
+- [Queue Management](/features/call-queues#managing-queues)
+
+---
+
+### dundi.conf
+
+**Purpose:** Configures DUNDi protocol for distributed dialplan sharing between Asterisk servers.
+
+**Location:** `/etc/asterisk/dundi.conf`
+
+**Use Case:** Interconnecting multiple Asterisk PBX systems to share extensions.
+
+**Key Sections:**
+- `[general]` - DUNDi protocol settings
+- `[mappings]` - Context mappings for number discovery
+- `[peer-identifier]` - Peer connection definitions
+
+**Example:**
+```ini
+[general]
+ttl=32                       ; Time to live
+autokill=yes                 ; Automatically expire stale routes
+
+[mappings]
+priv => dundi-priv-canonical,0,SIP,192.168.1.100/${NUMBER}
+
+[00:0C:29:52:7C:20]          ; Remote PBX MAC address
+model=symmetric
+host=192.168.1.200           ; Remote PBX IP
+inkey=remotepbx              ; Remote public key
+outkey=localpbx              ; Local private key
+include=priv
+permit=priv
+qualify=yes
+```
+
+**Related Documentation:**
+- [PBX Interconnection](/advanced/dundi-protocol)
+- [Multi-site Setup](/advanced/pbx-interconnection)
+
+---
+
+### func_odbc.conf
+
+**Purpose:** Defines custom database functions for use in dialplan via ODBC.
+
+**Location:** `/etc/asterisk/func_odbc.conf`
+
+**Use Case:** Creating reusable database queries accessible from dialplan.
+
+**Example:**
+```ini
+[general]
+
+[GETUSERNAME]
+dsn=asterisk                 ; ODBC data source name
+readsql=SELECT name FROM users WHERE extension='${SQL_ESC(${ARG1})}'
+
+[CHECKAUTH]
+dsn=asterisk
+readsql=SELECT COUNT(*) FROM users WHERE id='${SQL_ESC(${ARG1})}' AND pin='${SQL_ESC(${ARG2})}'
+
+[UPDATESTATUS]
+dsn=asterisk
+readsql=SELECT status FROM presence WHERE extension='${SQL_ESC(${ARG1})}'
+writesql=UPDATE presence SET status='${SQL_ESC(${VAL1})}' WHERE extension='${SQL_ESC(${ARG1})}'
+```
+
+**Usage in Dialplan:**
+```ini
+exten => 100,1,NoOp(Calling ${ODBC_GETUSERNAME(${EXTEN})})
+same => n,GotoIf($[${ODBC_CHECKAUTH(${userid},${pin})} = 1]?authorized:unauthorized)
+```
+
+**Related Documentation:**
+- [Database Integration](/database/mariadb-setup)
+- [ODBC Setup](/database/mariadb-setup#odbc-configuration)
+
+---
+
+## Additional Configuration Files
+
+### res_odbc.conf
+
+Configures ODBC database connections.
+
+```ini
+[asterisk]
+enabled => yes
+dsn => asterisk-connector    ; References /etc/odbc.ini
+username => asterisk
+password => asterisk
+pre-connect => yes
+```
+
+### musiconhold.conf
+
+Defines music on hold classes and sources.
+
+```ini
+[default]
+mode=files
+directory=/var/lib/asterisk/moh
+
+[custom]
+mode=files
+directory=/var/lib/asterisk/sounds/custom
+```
+
+### logger.conf
+
+Controls Asterisk logging behavior.
+
+```ini
+[general]
+
+[logfiles]
+console => notice,warning,error
+messages => notice,warning,error,verbose(3)
+full => notice,warning,error,debug,verbose(5)
+```
+
+### features.conf
+
+Configures call features like transfer, parking, pickup.
+
+```ini
+[general]
+
+[featuremap]
+blindxfer => #1              ; Blind transfer
+atxfer => *2                 ; Attended transfer
+pickup => *8                 ; Call pickup
+```
+
+### rtp.conf
+
+Configures RTP (media) settings.
+
+```ini
+[general]
+rtpstart=10000
+rtpend=20000
+strictrtp=yes
+```
+
+## Configuration Best Practices
+
+### 1. Use Comments
+
+Document your configuration with comments:
+```ini
+; Internal users - reception team
+[101]  ; Maria - Front desk
+type=friend
+secret=secure_password
+```
+
+### 2. Organize with Contexts
+
+Group related configurations:
+```ini
+[internal]        ; Internal extensions
+include => features
+include => voicemail
+
+[external]        ; External/incoming calls
+include => ivr
+```
+
+### 3. Backup Before Changes
+
+```bash
+# Backup all config files
+cd /etc/asterisk
+sudo tar czf ~/asterisk-backup-$(date +%Y%m%d).tar.gz *.conf
+```
+
+### 4. Clean Up Comments
+
+Remove excessive comments using vim:
+```vim
+:g/^\s*;/d    " Remove comment lines
+:g/^$/d       " Remove empty lines
+```
+
+### 5. Validate Changes
+
+Test configuration before applying:
+```bash
+# Check dialplan
+sudo asterisk -rx "dialplan reload"
+
+# Check SIP configuration
+sudo asterisk -rx "sip reload"
+
+# View any errors
+tail -f /var/log/asterisk/messages
+```
+
+### 6. Use Version Control
+
+Track configuration changes with git:
+```bash
+cd /etc/asterisk
+sudo git init
+sudo git add *.conf
+sudo git commit -m "Initial configuration"
+```
+
+## Configuration File Permissions
+
+Ensure proper ownership and permissions:
+
+```bash
+sudo chown -R asterisk:asterisk /etc/asterisk
+sudo chmod 640 /etc/asterisk/*.conf
+sudo chmod 750 /etc/asterisk
+```
+
+## Reloading Configuration
+
+After making changes, reload the affected modules:
+
+```
+CLI> dialplan reload      # Reload extensions.conf
+CLI> sip reload           # Reload sip.conf
+CLI> voicemail reload     # Reload voicemail.conf
+CLI> queue reload all     # Reload queues.conf
+CLI> module reload <module>  # Reload specific module
+```
+
+For major changes, restart Asterisk:
+```bash
+sudo systemctl restart asterisk
+```
+
+## Configuration Templates
+
+Find complete configuration file templates in the tutorial repository:
+
+- [Basic Setup](https://github.com/javierorp/Asterisk_Tutorial/tree/master/code/3_instalacion_asterisk)
+- [Call Center Example](https://github.com/javierorp/Asterisk_Tutorial/tree/master/code/7_call_center)
+- [All Examples](https://github.com/javierorp/Asterisk_Tutorial/tree/master/code)
+
+## Related Resources
+
+- [Installation Guide](/installation/asterisk-installation)
+- [Feature Configuration](/introduction)
+- [Troubleshooting](/reference/troubleshooting)
+- [Asterisk Official Docs](https://wiki.asterisk.org)

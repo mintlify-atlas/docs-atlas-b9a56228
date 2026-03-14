@@ -1,0 +1,187 @@
+---
+title: MariaDB Setup
+description: Install and configure MariaDB database for Asterisk integration
+---
+
+## Overview
+
+Integrating Asterisk with a database like MariaDB provides tremendous flexibility for your PBX system. Instead of modifying configuration files directly, you can manage users, extensions, and other parameters through database queries, greatly simplifying maintenance.
+
+MariaDB is a fork of MySQL and provides excellent compatibility with Asterisk's ODBC integration.
+
+## Installation
+
+<Steps>
+  <Step title="Update system packages">
+    Ensure your package lists are up to date:
+
+    ```bash
+    sudo apt update
+    sudo apt upgrade
+    ```
+  </Step>
+
+  <Step title="Download MySQL APT repository package">
+    Download the MySQL APT configuration package:
+
+    ```bash
+    cd /home/javier/archivos/
+    wget http://repo.mysql.com/mysql-apt-config_0.8.14-1_all.deb
+    ```
+  </Step>
+
+  <Step title="Install the package">
+    Install the downloaded package:
+
+    ```bash
+    sudo dpkg -i mysql-apt-config_0.8.14-1_all.deb
+    ```
+
+    <Note>
+      During installation, make sure to enable "MySQL Tools & Connectors" as this will enable the ODBC connector needed for Asterisk integration.
+    </Note>
+  </Step>
+
+  <Step title="Verify installation">
+    Once installation is complete, verify by accessing the database:
+
+    ```bash
+    sudo mysql -u root
+    ```
+  </Step>
+</Steps>
+
+## Security Configuration
+
+### Setting Root Password
+
+By default, MariaDB allows root access without a password. This is a security risk that should be addressed immediately.
+
+<Steps>
+  <Step title="Set the root password">
+    From within the MariaDB console:
+
+    ```sql
+    UPDATE mysql.user SET PASSWORD=PASSWORD('root') WHERE USER='root';
+    flush privileges;
+    ```
+
+    <Warning>
+      Replace `'root'` with a strong password in production environments. The example uses 'root' for demonstration purposes only.
+    </Warning>
+  </Step>
+
+  <Step title="Enable password authentication">
+    Ensure password is always required for root login:
+
+    ```sql
+    UPDATE mysql.user SET plugin = '' WHERE user = 'root';
+    quit;
+    ```
+  </Step>
+
+  <Step title="Restart MySQL service">
+    Apply the changes by restarting the service:
+
+    ```bash
+    sudo systemctl restart mysql
+    ```
+  </Step>
+</Steps>
+
+## User Management
+
+### Creating Asterisk User
+
+Create a dedicated database user for Asterisk with appropriate permissions.
+
+<Steps>
+  <Step title="Create the user">
+    Log into MariaDB as root:
+
+    ```bash
+    sudo mysql -u root -p
+    ```
+
+    Create the asterisk user:
+
+    ```sql
+    use mysql;
+    CREATE USER 'asterisk'@'localhost' IDENTIFIED BY 'asterisk';
+    ```
+  </Step>
+
+  <Step title="Verify user creation">
+    List all users to confirm:
+
+    ```sql
+    select user, host from user;
+    ```
+  </Step>
+
+  <Step title="Test the new user">
+    Exit and test logging in with the new user:
+
+    ```bash
+    sudo mysql -u asterisk -p
+    ```
+  </Step>
+</Steps>
+
+## Database Setup
+
+### Creating the Asterisk Database
+
+<Steps>
+  <Step title="Create the database">
+    As root user in MariaDB:
+
+    ```sql
+    CREATE DATABASE asteriskdb;
+    show databases;
+    ```
+  </Step>
+
+  <Step title="Create users table">
+    Switch to the new database and create a table:
+
+    ```sql
+    use asteriskdb;
+    CREATE TABLE usuarios(nombre VARCHAR(15), extension INTEGER);
+    show tables;
+    ```
+  </Step>
+
+  <Step title="Insert sample data">
+    Populate the table with test users:
+
+    ```sql
+    insert into usuarios values("javier", 4000);
+    insert into usuarios values("belen", 4001);
+    insert into usuarios values("direccion", 5000);
+    select * from usuarios;
+    ```
+  </Step>
+
+  <Step title="Grant permissions">
+    Give the asterisk user access to the database:
+
+    ```sql
+    GRANT SELECT, INSERT, UPDATE, DELETE ON asteriskdb.* TO 'asterisk'@'localhost';
+    ```
+
+    This grants the following permissions:
+    - **SELECT**: Read data from tables
+    - **INSERT**: Add new records
+    - **UPDATE**: Modify existing records
+    - **DELETE**: Remove records
+  </Step>
+</Steps>
+
+## Next Steps
+
+With MariaDB installed and configured, you're ready to:
+
+1. [Install the ODBC connector](/database/odbc-connector) to enable communication between Asterisk and MariaDB
+2. [Configure Asterisk connection](/database/asterisk-connection) to use the database
+3. [Test the integration](/database/testing) to verify everything works correctly

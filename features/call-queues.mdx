@@ -1,0 +1,466 @@
+---
+title: 'Call Queues'
+description: 'Configure call queues and distribution strategies in Asterisk for handling multiple simultaneous calls'
+---
+
+## Overview
+
+Call queues enable your PBX to handle more incoming calls than available agents by placing callers in a waiting queue. This is essential for call centers, support lines, and any scenario where call volume may exceed agent capacity.
+
+## How Call Queues Work
+
+When a call enters a queue:
+
+1. **Caller enters queue** and hears music on hold
+2. **Queue distributes call** to available agents based on strategy
+3. **Agent answers** or call times out
+4. **Next caller** is processed
+
+## Basic Queue Configuration
+
+### queues.conf
+
+Create your queue configuration in `/etc/asterisk/queues.conf`:
+
+```ini queues.conf
+[general]
+persistentmembers = yes
+monitor-type = MixMonitor
+
+[recepcion]
+strategy = leastrecent
+timeout = 30
+member => SIP/javier
+member => SIP/belen
+```
+
+**General Settings:**
+- `persistentmembers = yes` - Queue members persist across Asterisk restarts
+- `monitor-type = MixMonitor` - Recording type for call monitoring
+
+**Queue Settings:**
+- `strategy` - How calls are distributed to agents (see strategies below)
+- `timeout` - Seconds to ring each agent before trying next
+- `member` - Static queue members (agents)
+
+### Dialplan Integration
+
+Add queue access to `/etc/asterisk/extensions.conf`:
+
+```ini extensions.conf
+[empleado]
+;----- Reception queue
+exten => 4444,1,NoOp(Reception)
+same => n,Set(CHANNEL(musicclass)=recepcion)
+same => n,Answer()
+same => n,Queue(recepcion,,,,120)
+same => n,Hangup()
+```
+
+**Dialplan Breakdown:**
+
+<Steps>
+
+<Step title="Set music on hold">
+```ini
+same => n,Set(CHANNEL(musicclass)=recepcion)
+```
+Assigns custom music on hold for this queue (configured in `musiconhold.conf`).
+</Step>
+
+<Step title="Answer the call">
+```ini
+same => n,Answer()
+```
+Answers the call before entering the queue.
+</Step>
+
+<Step title="Enter queue">
+```ini
+same => n,Queue(recepcion,,,,120)
+```
+Places caller in the "recepcion" queue for up to 120 seconds.
+</Step>
+
+</Steps>
+
+### Queue() Application Syntax
+
+```
+Queue(queuename[,options[,URL[,announceoverride[,timeout[,AGI[,macro[,gosub[,rule[,position]]]]]]]])
+```
+
+**Common Parameters:**
+- `queuename` - Name of the queue (required)
+- `options` - Behavior flags (optional)
+- `timeout` - Maximum seconds in queue (optional)
+
+### Load Configuration
+
+<Steps>
+
+<Step title="Reload queue configuration">
+```
+CLI> queue reload all
+```
+</Step>
+
+<Step title="Verify queue">
+```
+CLI> queue show recepcion
+```
+
+Expected output:
+```
+recepcion has 0 calls (max unlimited) in 'leastrecent' strategy (0s holdtime, 0s talktime), W:0, C:0, A:0, SL:0.0% within 0s
+   Members: 
+      SIP/javier (ringinuse disabled) (dynamic) (Not in use) has taken no calls yet
+      SIP/belen (ringinuse disabled) (dynamic) (Not in use) has taken no calls yet
+   No Callers
+```
+</Step>
+
+<Step title="Reload dialplan">
+```
+CLI> dialplan reload
+```
+</Step>
+
+</Steps>
+
+## Queue Distribution Strategies
+
+The `strategy` parameter determines how calls are distributed to agents.
+
+### Available Strategies
+
+| Strategy | Description | Best For |
+|----------|-------------|----------|
+| `ringall` | Ring all available agents simultaneously | Urgent calls, small teams |
+| `leastrecent` | Ring agent who least recently hung up | Equal distribution |
+| `fewestcalls` | Ring agent with fewest completed calls | Equal workload |
+| `random` | Ring random available agent | Simple distribution |
+| `rrmemory` | Round robin with memory of last position | Fair rotation |
+| `linear` | Ring in order specified | Priority-based |
+| `wrandom` | Weighted random (by penalty) | Skill-based routing |
+
+### Strategy Examples
+
+#### Ring All (Urgency)
+
+```ini queues.conf
+[emergency]
+strategy = ringall
+timeout = 15
+member => SIP/agent1
+member => SIP/agent2
+member => SIP/agent3
+```
+
+All agents' phones ring simultaneously. First to answer gets the call.
+
+#### Least Recent (Fair Distribution)
+
+```ini queues.conf
+[support]
+strategy = leastrecent
+timeout = 30
+member => SIP/agent1
+member => SIP/agent2
+```
+
+Rings the agent who finished their last call longest ago.
+
+#### Round Robin (Rotation)
+
+```ini queues.conf
+[sales]
+strategy = rrmemory
+timeout = 20
+member => SIP/agent1
+member => SIP/agent2
+member => SIP/agent3
+```
+
+Distributes calls in rotation, remembering position.
+
+## Music on Hold
+
+Customize what callers hear while waiting.
+
+### musiconhold.conf
+
+Configure in `/etc/asterisk/musiconhold.conf`:
+
+```ini musiconhold.conf
+[recepcion]
+mode=files
+directory=/var/lib/asterisk/sounds/es/mimusica/
+```
+
+**Parameters:**
+- `mode=files` - Play audio files from directory
+- `directory` - Path to audio files
+
+### Reload Music on Hold
+
+```
+CLI> moh reload
+CLI> moh show classes
+```
+
+<Note>
+Audio files should be in formats Asterisk supports (wav, gsm, etc.). Place files in the specified directory with appropriate permissions.
+</Note>
+
+## Advanced Queue Configuration
+
+### Queue Announcements
+
+Provide position and wait time updates:
+
+```ini queues.conf
+[support]
+strategy = leastrecent
+timeout = 30
+announce-frequency = 30
+announce-position = yes
+announce-holdtime = yes
+member => SIP/agent1
+member => SIP/agent2
+```
+
+- `announce-frequency = 30` - Announce every 30 seconds
+- `announce-position = yes` - Tell caller their position
+- `announce-holdtime = yes` - Estimated wait time
+
+### Queue Timeouts and Retry
+
+```ini queues.conf
+[sales]
+strategy = rrmemory
+timeout = 20
+retry = 5
+maxlen = 50
+member => SIP/agent1
+member => SIP/agent2
+```
+
+- `timeout = 20` - Ring each agent for 20 seconds
+- `retry = 5` - Wait 5 seconds before trying next agent
+- `maxlen = 50` - Maximum callers in queue (51st gets busy signal)
+
+### Service Level Targets
+
+```ini queues.conf
+[support]
+strategy = leastrecent
+serviceline = 60
+member => SIP/agent1
+member => SIP/agent2
+```
+
+`servicelevel = 60` - Target: answer within 60 seconds (tracked in statistics)
+
+### Weight and Penalty
+
+Prioritize certain agents:
+
+```ini queues.conf
+[priority-support]
+strategy = linear
+member => SIP/senior-agent,1
+member => SIP/junior-agent,2
+```
+
+Lower penalty agents are tried first (senior before junior).
+
+## Dynamic Queue Members
+
+Agents can join/leave queues dynamically.
+
+### Agent Login
+
+From dialplan:
+
+```ini extensions.conf
+; Add agent to queue
+exten => *65,1,AddQueueMember(recepcion)
+same => n,Playback(agent-loginok)
+same => n,Hangup()
+
+; Remove agent from queue
+exten => *66,1,RemoveQueueMember(recepcion)
+same => n,Playback(agent-loggedoff)
+same => n,Hangup()
+```
+
+Agents dial `*65` to login, `*66` to logout.
+
+### From CLI
+
+Manually manage members:
+
+```
+CLI> queue add member SIP/agent3 to recepcion
+CLI> queue remove member SIP/agent3 from recepcion
+```
+
+## Queue Monitoring
+
+### View Queue Status
+
+```
+CLI> queue show
+CLI> queue show recepcion
+```
+
+### Real-Time Statistics
+
+```
+CLI> core show channels
+```
+
+Shows active queue calls.
+
+### Call Recording
+
+With `monitor-type = MixMonitor`:
+
+```ini queues.conf
+[support]
+monitor-type = MixMonitor
+monitor-format = wav
+```
+
+Recordings saved to `/var/spool/asterisk/monitor/`.
+
+## Queue Callbacks
+
+Offer callbacks instead of waiting:
+
+```ini extensions.conf
+exten => 4444,1,Answer()
+same => n,Set(QUEUE_PRIO=1)
+same => n,Queue(recepcion,,,,120,,,,,c)
+same => n,GotoIf($["${QUEUESTATUS}" = "TIMEOUT"]?callback:done)
+same => n(callback),Playback(pls-hold-while-try)
+same => n,System(/usr/local/bin/schedule-callback.sh ${CALLERID(num)})
+same => n,Playback(callback-scheduled)
+same => n(done),Hangup()
+```
+
+## Queue Overflow Handling
+
+```ini extensions.conf
+exten => 4444,1,Answer()
+same => n,Queue(recepcion,,,,120)
+same => n,GotoIf($["${QUEUESTATUS}" = "FULL"]?overflow:done)
+same => n(overflow),Playback(queue-full)
+same => n,VoiceMail(support@default)
+same => n(done),Hangup()
+```
+
+Handles queue full scenarios with voicemail fallback.
+
+## Testing Your Queue
+
+<Steps>
+
+<Step title="Generate test calls">
+Call extension 4444 from multiple phones simultaneously.
+</Step>
+
+<Step title="Monitor queue">
+```
+CLI> queue show recepcion
+```
+Observe callers entering queue and being distributed.
+</Step>
+
+<Step title="Check agent activity">
+Verify agents receive calls according to strategy.
+</Step>
+
+<Step title="Test timeout">
+Leave a call in queue to verify timeout behavior.
+</Step>
+
+</Steps>
+
+## Queue Best Practices
+
+<Steps>
+
+<Step title="Choose appropriate strategy">
+Match strategy to business needs:
+- Customer service: `leastrecent` or `fewestcalls`
+- Sales: `rrmemory`
+- Emergency: `ringall`
+</Step>
+
+<Step title="Set realistic timeouts">
+- Agent timeout: 15-30 seconds
+- Queue timeout: 120-300 seconds
+</Step>
+
+<Step title="Monitor queue performance">
+Regularly review:
+- Average wait time
+- Abandonment rate
+- Service level achievement
+</Step>
+
+<Step title="Provide caller feedback">
+Enable position and wait time announcements.
+</Step>
+
+<Step title="Plan for overflow">
+Implement fallback options (voicemail, callback, alternate queue).
+</Step>
+
+</Steps>
+
+## Troubleshooting
+
+### Queue Not Working
+
+1. **Verify queue exists:**
+   ```
+   CLI> queue show
+   ```
+
+2. **Check members:**
+   ```
+   CLI> queue show recepcion
+   ```
+
+3. **Ensure agents are registered:**
+   ```
+   CLI> sip show peers
+   ```
+
+### Calls Not Distributing
+
+- Check agent availability
+- Verify strategy is appropriate
+- Review timeout settings
+- Check for conflicting dialplan rules
+
+### No Music on Hold
+
+- Verify `musiconhold.conf` configuration
+- Check audio file paths and permissions
+- Reload MOH: `moh reload`
+
+### Agents Not Receiving Calls
+
+- Confirm agent is queue member: `queue show queuename`
+- Check agent status (paused, unavailable)
+- Verify SIP registration
+
+## Next Steps
+
+- Integrate with [Business Hours](/features/business-hours) for time-based queue routing
+- Configure [Logging](/features/logging) to track queue performance
+- Set up [External Calls](/features/external-calls) to route to appropriate queues

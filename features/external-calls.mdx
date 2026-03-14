@@ -1,0 +1,254 @@
+---
+title: 'External Calls'
+description: 'Route external calls to internal extensions using context redirection in Asterisk'
+---
+
+## Overview
+
+In a production environment, a PBX must handle calls from external sources and route them to the appropriate internal extensions. This guide demonstrates how to configure Asterisk to accept external calls and redirect them to internal contexts.
+
+## Call Flow Architecture
+
+External calls typically follow this pattern:
+
+1. **External caller** dials a public phone number (e.g., 995554001)
+2. **Asterisk receives** the call in an "incoming" context
+3. **Extension is extracted** from the dialed number
+4. **Call is routed** to the internal employee context
+5. **Internal extension** handles the call normally
+
+## Number Plan Example
+
+Suppose your organization is assigned the phone number range **995554XXX** (995554000-995554999). The last 4 digits map to internal extensions:
+
+- External: **995554001** → Internal: **4001**
+- External: **995554040** → Internal: **4040**
+- External: **995554000** → Internal: **4000**
+
+## Configuration
+
+### SIP Configuration
+
+First, create a SIP user to represent external calls in `/etc/asterisk/sip.conf`:
+
+```ini sip.conf
+[exterior]
+type=friend
+secret=123456
+context=entrantes
+host=dynamic
+canreinvite=no
+nat=force_rport,comedia
+```
+
+**Key Configuration:**
+- `context=entrantes` - External calls enter the "entrantes" (incoming) context
+- This user represents the external gateway or trunk
+
+### Dialplan Configuration
+
+Edit `/etc/asterisk/extensions.conf` to handle incoming external calls:
+
+```ini extensions.conf
+[entrantes]
+;---- Route to dialed extension
+exten => _995554XXX,1,Set(extension=${EXTEN:5})
+same => n,NoOp(Calling extension ${extension})
+same => n,Goto(empleado,${extension},1)
+same => n,Hangup()
+```
+
+**How It Works:**
+
+<Steps>
+
+<Step title="Pattern matching">
+`_995554XXX` matches any number from 995554000 to 995554999
+</Step>
+
+<Step title="Extract extension">
+`${EXTEN:5}` extracts the last 4 digits (position 5 onwards):
+- Input: **995554001**
+- Output: **4001**
+</Step>
+
+<Step title="Route to internal context">
+`Goto(empleado,${extension},1)` transfers the call to the employee context at the extracted extension
+</Step>
+
+</Steps>
+
+## Handling Non-Existent Extensions
+
+Add a catch-all pattern in the employee context to handle calls to unavailable extensions:
+
+```ini extensions.conf
+[empleado]
+;#### Calls from external numbers with no associated extension ####
+exten => _4XXX,1,Answer()
+same => n,Festival(La extension ${extension} no se encuentra disponible)
+same => n,Hangup()
+```
+
+This provides feedback when someone calls an extension that doesn't exist:
+- **995554022** → "Extension 4022 is not available"
+
+<Note>
+This catch-all rule should be placed **after** all specific extension definitions to avoid matching valid extensions.
+</Note>
+
+## Testing the Configuration
+
+### Reload Dialplan
+
+```
+CLI> dialplan reload
+CLI> sip reload
+```
+
+### Test Available Extension
+
+Call from the "exterior" user to **995554001** (Belen's extension):
+
+```
+CLI> originate SIP/exterior extension 995554001@entrantes
+```
+
+The call should:
+1. Enter the `entrantes` context
+2. Extract extension **4001**
+3. Route to Belen in the `empleado` context
+4. Ring Belen's phone
+
+### Test Unavailable Extension
+
+Call to a non-existent extension **995554022**:
+
+```
+CLI> originate SIP/exterior extension 995554022@entrantes
+```
+
+The caller should hear: "La extensión 4022 no se encuentra disponible"
+
+## Advanced Routing
+
+### Context-Based Permissions
+
+You can create different incoming contexts for different call sources:
+
+```ini extensions.conf
+[entrantes-publico]
+; Public callers - limited access
+exten => _995554XXX,1,Set(extension=${EXTEN:5})
+same => n,Goto(publico,${extension},1)
+
+[entrantes-socios]
+; Partner companies - more access
+exten => _995554XXX,1,Set(extension=${EXTEN:5})
+same => n,Goto(empleado,${extension},1)
+```
+
+### DID (Direct Inward Dialing)
+
+For more complex routing with multiple DIDs:
+
+```ini extensions.conf
+[entrantes]
+; Sales line
+exten => _99555401X,1,Queue(sales)
+
+; Support line  
+exten => _99555402X,1,Queue(support)
+
+; Direct extensions
+exten => _995554XXX,1,Set(extension=${EXTEN:5})
+same => n,Goto(empleado,${extension},1)
+```
+
+## Integration with Trunks
+
+<Warning>
+In a production environment, the `[exterior]` user would be replaced with an actual SIP trunk configuration connecting to your telephony provider.
+</Warning>
+
+### Example Trunk Configuration
+
+```ini sip.conf
+[trunk-provider]
+type=peer
+host=sip.provider.com
+username=your_account
+secret=your_password
+context=entrantes
+insecure=port,invite
+nat=force_rport,comedia
+```
+
+## Monitoring External Calls
+
+View call activity in the Asterisk console:
+
+```
+CLI> core set verbose 3
+```
+
+Or review call detail records:
+
+```bash
+tail -f /var/log/asterisk/messages
+```
+
+## Security Considerations
+
+<Warning>
+**Protect against unauthorized access:**
+- Use strong secrets for trunk authentication
+- Implement firewall rules to restrict SIP access
+- Consider using IP-based authentication for trusted trunks
+- Monitor for unusual calling patterns
+</Warning>
+
+### Restrict International Calls
+
+```ini extensions.conf
+[entrantes]
+; Block international prefixes
+exten => _00.,1,Hangup()
+exten => _011.,1,Hangup()
+
+; Allow only local numbers
+exten => _995554XXX,1,Set(extension=${EXTEN:5})
+same => n,Goto(empleado,${extension},1)
+```
+
+## Troubleshooting
+
+### Calls Not Routing
+
+1. **Check context matching:**
+   ```
+   CLI> dialplan show entrantes
+   ```
+
+2. **Verify pattern syntax:**
+   - `_995554XXX` for flexible matching
+   - `X` matches digits 0-9
+   - `N` matches digits 2-9
+   - `Z` matches digits 1-9
+
+3. **Test extension extraction:**
+   ```ini
+   exten => _995554XXX,1,NoOp(Full: ${EXTEN}, Extracted: ${EXTEN:5})
+   ```
+
+### No Audio on External Calls
+
+- Check NAT configuration in `sip.conf`
+- Verify RTP port ranges are open in firewall
+- Consider enabling `directmedia=no` for NAT scenarios
+
+## Next Steps
+
+- Add [Business Hours](/features/business-hours) to control when external calls are accepted
+- Configure [Call Queues](/features/call-queues) for incoming call distribution
+- Enable [Call Security](/features/call-security) with TLS for encrypted connections

@@ -1,0 +1,635 @@
+---
+title: "queues.conf Configuration"
+description: "Complete guide to configuring call queues in Asterisk"
+---
+
+# queues.conf Configuration
+
+The `queues.conf` file configures ACD (Automatic Call Distribution) queues in Asterisk, enabling call center functionality with queue management, agent assignment, and various distribution strategies.
+
+## File Location
+
+```
+/etc/asterisk/queues.conf
+```
+
+## Configuration Structure
+
+The file consists of:
+- **[general]** section - Global queue settings
+- **Queue definitions** - Individual queue configurations with members
+
+## [general] Section
+
+Global settings that apply to all queues.
+
+```ini
+[general]
+persistentmembers = yes
+monitor-type = MixMonitor
+```
+
+<ParamField path="persistentmembers" type="boolean" default="no">
+  Remember dynamically added/removed queue members across Asterisk restarts.
+  
+  Set to `yes` to maintain member list in AstDB (Asterisk database).
+</ParamField>
+
+<ParamField path="monitor-type" type="string" default="Monitor">
+  Application to use for call recording:
+  - `Monitor` - Traditional channel monitor (separate in/out files)
+  - `MixMonitor` - Mixed recording (single file, more efficient)
+</ParamField>
+
+<ParamField path="autofill" type="boolean" default="yes">
+  Distribute calls to multiple available agents simultaneously (when strategy allows).
+  
+  Set to `no` for strict one-at-a-time distribution.
+</ParamField>
+
+<ParamField path="shared_lastcall" type="boolean" default="no">
+  Share "last call" time across all queues for an agent.
+  
+  Useful when agents are members of multiple queues.
+</ParamField>
+
+## Queue Definitions
+
+Each queue is defined as a section with configuration parameters and member list.
+
+### Basic Queue Example
+
+```ini
+[recepcion]
+strategy = leastrecent
+timeout = 30
+member => SIP/javier
+member => SIP/belen
+```
+
+## Queue Parameters
+
+### Strategy (Distribution Algorithm)
+
+<ParamField path="strategy" type="string" default="ringall" required>
+  Determines how calls are distributed to queue members:
+  
+  **`ringall`** - Ring all available agents simultaneously (default)
+  
+  **`leastrecent`** - Ring agent who least recently answered a call
+  
+  **`fewestcalls`** - Ring agent with fewest completed calls
+  
+  **`random`** - Ring random agent
+  
+  **`rrmemory`** - Round-robin with memory (remembers last agent)
+  
+  **`rrordered`** - Round-robin in order listed
+  
+  **`linear`** - Ring in order listed, always starting with first
+  
+  **`wrandom`** - Weighted random based on member penalty
+</ParamField>
+
+### Strategy Comparison
+
+| Strategy | Best For | Behavior |
+|----------|----------|----------|
+| `ringall` | Small teams | All phones ring |
+| `leastrecent` | Fair distribution | Balances call load by time |
+| `fewestcalls` | Fair distribution | Balances call load by count |
+| `random` | Even distribution | Random selection |
+| `rrmemory` | Sequential | Rotates through agents |
+| `linear` | Hierarchy | Always tries first agent first |
+
+### Timeout Settings
+
+<ParamField path="timeout" type="integer" default="15">
+  Seconds to ring each agent before trying next (or all if strategy is ringall).
+  
+  Common values: 15-30 seconds
+</ParamField>
+
+<ParamField path="retry" type="integer" default="5">
+  Seconds to wait before trying all agents again if none answered.
+  
+  Lower values = more aggressive ringing
+</ParamField>
+
+<ParamField path="maxlen" type="integer" default="0">
+  Maximum number of callers waiting in queue. `0` = unlimited.
+  
+  When exceeded, Queue() application returns and dialplan continues.
+</ParamField>
+
+<ParamField path="weight" type="integer" default="0">
+  Queue priority when agents are members of multiple queues.
+  
+  Higher weight = higher priority. Calls from higher weight queues delivered first.
+</ParamField>
+
+### Caller Experience
+
+<ParamField path="musicclass" type="string" default="default">
+  Music on hold class to play while waiting.
+  
+  References class defined in `musiconhold.conf`.
+</ParamField>
+
+<ParamField path="announce" type="string">
+  Sound file to play to caller before joining queue.
+  
+  Example: `announce=welcome-to-support`
+</ParamField>
+
+<ParamField path="announce-frequency" type="integer" default="0">
+  Seconds between periodic announcements to waiting callers. `0` = disabled.
+  
+  Common values: 30-60 seconds
+</ParamField>
+
+<ParamField path="periodic-announce" type="string">
+  Sound file(s) to play periodically. Multiple files separated by comma.
+  
+  Example: `periodic-announce=your-call-is-important,please-hold`
+</ParamField>
+
+<ParamField path="announce-position" type="boolean" default="no">
+  Announce caller's position in queue:
+  - `yes` - Always announce
+  - `no` - Never announce
+  - `limit` - Only announce if position > announce-position-limit
+</ParamField>
+
+<ParamField path="announce-holdtime" type="boolean" default="no">
+  Announce estimated hold time to caller:
+  - `yes` - Always announce
+  - `no` - Never announce
+  - `once` - Announce once when joining
+</ParamField>
+
+### Agent Experience
+
+<ParamField path="context" type="string">
+  Dialplan context to execute when agent answers.
+  
+  Advanced feature for custom agent handling.
+</ParamField>
+
+<ParamField path="servicelevel" type="integer" default="60">
+  Seconds within which call should be answered to meet service level.
+  
+  Used for statistics and reporting.
+</ParamField>
+
+<ParamField path="wrapuptime" type="integer" default="0">
+  Seconds after call ends before agent is available for next call.
+  
+  Gives agent time for call notes, disposition, etc.
+</ParamField>
+
+<ParamField path="autopause" type="string" default="no">
+  Automatically pause agent when they don't answer:
+  - `yes` - Pause agent
+  - `no` - Don't pause
+  - `all` - Pause in all queues
+</ParamField>
+
+### Caller Exit Options
+
+<ParamField path="joinempty" type="string" default="yes">
+  Allow callers to join queue when no agents available:
+  - `yes` - Allow joining
+  - `no` - Don't allow if no agents
+  - `strict` - Don't allow if no available/not paused agents
+  - `unavailable` - Don't allow if no logged in agents
+  - `penalty` - Don't allow if no agents without penalty
+</ParamField>
+
+<ParamField path="leavewhenempty" type="string" default="no">
+  Remove callers when queue becomes empty:
+  - `yes` - Remove immediately
+  - `no` - Keep waiting
+  - `strict` - Remove when no available/not paused agents
+  - `unavailable` - Remove when no logged in agents
+</ParamField>
+
+<ParamField path="ringinuse" type="boolean" default="yes">
+  Ring agents who are already on a call.
+  
+  Set to `no` to only ring idle agents.
+</ParamField>
+
+### Reporting and Monitoring
+
+<ParamField path="monitor-format" type="string" default="wav">
+  Recording file format: `wav`, `gsm`, `wav49`
+</ParamField>
+
+<ParamField path="eventwhencalled" type="boolean" default="no">
+  Generate AMI event when agent is called.
+</ParamField>
+
+<ParamField path="eventmemberstatus" type="boolean" default="no">
+  Generate AMI event when member status changes.
+</ParamField>
+
+<ParamField path="reportholdtime" type="boolean" default="no">
+  Report hold time to agent when they answer.
+</ParamField>
+
+<ParamField path="memberdelay" type="integer" default="0">
+  Seconds to delay before alerting next member.
+  
+  Prevents multiple agents from being alerted simultaneously in some strategies.
+</ParamField>
+
+## Queue Members
+
+Define static queue members with the `member` directive.
+
+### Member Format
+
+```ini
+member => Technology/Resource,Penalty,MemberName,StateInterface
+```
+
+### Simple Member Definition
+
+```ini
+member => SIP/javier
+member => SIP/belen
+```
+
+### Member with Penalty
+
+```ini
+member => SIP/agent1,0
+member => SIP/agent2,0
+member => SIP/backup,10
+```
+
+<ParamField path="Technology/Resource" type="string" required>
+  Channel to dial (e.g., `SIP/javier`, `PJSIP/5000`, `IAX2/agent`)
+</ParamField>
+
+<ParamField path="Penalty" type="integer" default="0">
+  Member penalty/priority. Lower penalty = higher priority.
+  
+  Queue tries members with lower penalty first.
+</ParamField>
+
+<ParamField path="MemberName" type="string">
+  Friendly name for member (for logging and display).
+</ParamField>
+
+<ParamField path="StateInterface" type="string">
+  Alternative interface to check for busy status.
+  
+  Useful when member interface differs from state checking interface.
+</ParamField>
+
+### Member Examples
+
+```ini
+; Basic members
+member => SIP/101
+member => SIP/102
+
+; With penalty (backup agent)
+member => SIP/201,0,Primary Agent
+member => SIP/202,10,Backup Agent
+
+; With state interface
+member => Local/300@agents,0,Agent 300,SIP/300
+```
+
+## Complete Queue Examples
+
+### Simple Reception Queue
+
+```ini
+[recepcion]
+strategy = leastrecent
+timeout = 30
+member => SIP/javier
+member => SIP/belen
+```
+
+### Advanced Support Queue
+
+```ini
+[support]
+strategy = rrmemory
+timeout = 20
+retry = 5
+maxlen = 10
+weight = 1
+
+musicclass = default
+announce = welcome-to-support
+announce-frequency = 45
+periodic-announce = your-call-is-important,please-hold
+announce-position = yes
+announce-holdtime = yes
+
+servicelevel = 60
+wrapuptime = 15
+autopause = yes
+ringinuse = no
+
+joinempty = no
+leavewhenempty = yes
+
+eventwhencalled = yes
+eventmemberstatus = yes
+reportholdtime = yes
+
+member => SIP/support1,0,Support Agent 1
+member => SIP/support2,0,Support Agent 2
+member => SIP/support3,5,Support Agent 3
+member => SIP/manager,10,Support Manager
+```
+
+### Sales Queue with Tiers
+
+```ini
+[sales]
+strategy = linear
+timeout = 25
+retry = 5
+
+musicclass = sales-music
+announce-position = yes
+
+wrapuptime = 30
+
+; Tier 1 - Primary agents
+member => SIP/sales1,0,Sales Rep 1
+member => SIP/sales2,0,Sales Rep 2
+
+; Tier 2 - Secondary agents
+member => SIP/sales3,5,Sales Rep 3
+member => SIP/sales4,5,Sales Rep 4
+
+; Tier 3 - Manager
+member => SIP/salesmgr,10,Sales Manager
+```
+
+### Multi-Language Support
+
+```ini
+[support-english]
+strategy = fewestcalls
+timeout = 30
+musicclass = english-hold
+announce = welcome-english
+member => SIP/en1
+member => SIP/en2
+
+[support-spanish]
+strategy = fewestcalls
+timeout = 30
+musicclass = spanish-hold
+announce = welcome-spanish
+member => SIP/es1
+member => SIP/es2
+```
+
+## Integration with Dialplan
+
+### Basic Queue Call
+
+```ini
+[empleado]
+exten => 4444,1,NoOp(Reception queue)
+same => n,Set(CHANNEL(musicclass)=recepcion)
+same => n,Answer()
+same => n,Queue(recepcion)
+same => n,Hangup()
+```
+
+### Queue with Timeout
+
+```ini
+exten => 5555,1,Answer()
+same => n,Queue(support,,,,120)  ; 120 second max wait
+same => n,Voicemail(support-vm)  ; If timeout, go to voicemail
+same => n,Hangup()
+```
+
+### Queue with Options
+
+```ini
+exten => 6666,1,Answer()
+same => n,Queue(sales,t)  ; 't' allows caller to transfer
+same => n,Hangup()
+```
+
+<ParamField path="Queue options" type="string">
+  Common options:
+  - `t` - Allow caller to transfer
+  - `T` - Allow agent to transfer
+  - `r` - Ring instead of music on hold
+  - `n` - Don't play announcement
+  - `i` - Ignore call forward requests
+  - `c` - Continue in dialplan if agent hangs up
+  - `k` - Allow caller to park call
+  - `h` - Allow caller to hang up by pressing *
+</ParamField>
+
+### Advanced Queue Routing
+
+```ini
+[incoming]
+exten => 7777,1,Answer()
+same => n,Set(CHANNEL(musicclass)=recepcion)
+same => n,Playback(welcome)
+
+; Try queue for 60 seconds
+same => n,Set(QUEUERESULT=)
+same => n,Queue(recepcion,,,,60)
+
+; Handle queue result
+same => n,GotoIf($["${QUEUERESULT}" = "TIMEOUT"]?timeout:continue)
+same => n(timeout),Playback(all-agents-busy)
+same => n,Voicemail(support)
+same => n,Hangup()
+
+same => n(continue),Hangup()
+```
+
+## Dynamic Queue Management
+
+### Add Agent to Queue
+
+```ini
+exten => *75,1,Answer()
+same => n,AddQueueMember(support,SIP/${CALLERID(num)})
+same => n,Playback(agent-loginok)
+same => n,Hangup()
+```
+
+### Remove Agent from Queue
+
+```ini
+exten => *76,1,Answer()
+same => n,RemoveQueueMember(support,SIP/${CALLERID(num)})
+same => n,Playback(agent-loggedoff)
+same => n,Hangup()
+```
+
+### Pause/Unpause Agent
+
+```ini
+; Pause
+exten => *77,1,PauseQueueMember(support,SIP/${CALLERID(num)})
+same => n,Playback(agent-paused)
+same => n,Hangup()
+
+; Unpause
+exten => *78,1,UnpauseQueueMember(support,SIP/${CALLERID(num)})
+same => n,Playback(agent-unpaused)
+same => n,Hangup()
+```
+
+## CLI Commands
+
+Manage queues from Asterisk CLI:
+
+```bash
+# Show all queues
+asterisk -rx "queue show"
+
+# Show specific queue
+asterisk -rx "queue show recepcion"
+
+# Reload queues
+asterisk -rx "queue reload"
+
+# Add member
+asterisk -rx "queue add member SIP/303 to support"
+
+# Remove member
+asterisk -rx "queue remove member SIP/303 from support"
+
+# Pause member
+asterisk -rx "queue pause member SIP/303"
+
+# Unpause member
+asterisk -rx "queue unpause member SIP/303"
+
+# Show queue statistics
+asterisk -rx "queue show recepcion"
+```
+
+## Complete Configuration Example
+
+```ini
+[general]
+persistentmembers = yes
+monitor-type = MixMonitor
+autofill = yes
+shared_lastcall = yes
+
+; Reception queue - ring all
+[recepcion]
+strategy = leastrecent
+timeout = 30
+retry = 5
+maxlen = 5
+weight = 0
+
+musicclass = default
+announce-position = yes
+announce-frequency = 30
+
+wrapuptime = 10
+autopause = no
+ringinuse = yes
+
+joinempty = yes
+leavewhenempty = no
+
+member => SIP/javier
+member => SIP/belen
+
+; Support queue - tiered
+[support]
+strategy = linear
+timeout = 25
+retry = 5
+maxlen = 10
+weight = 1
+
+musicclass = support-hold
+announce = welcome-to-support
+announce-position = yes
+announce-holdtime = yes
+announce-frequency = 45
+
+servicelevel = 60
+wrapuptime = 20
+autopause = yes
+ringinuse = no
+
+joinempty = no
+leavewhenempty = yes
+
+member => SIP/support1,0,Tier 1 Support
+member => SIP/support2,0,Tier 1 Support
+member => SIP/support3,5,Tier 2 Support
+member => SIP/manager,10,Support Manager
+
+; Sales queue
+[sales]
+strategy = fewestcalls
+timeout = 30
+weight = 2
+
+musicclass = sales-music
+wrapuptime = 30
+
+member => SIP/sales1,0
+member => SIP/sales2,0
+member => SIP/sales3,0
+```
+
+## Best Practices
+
+1. **Choose appropriate strategy** - Match strategy to business needs
+2. **Set reasonable timeouts** - Balance between customer wait and agent ring time
+3. **Use wrapuptime** - Give agents time between calls
+4. **Configure announcements** - Keep callers informed
+5. **Monitor statistics** - Track queue performance
+6. **Use penalties** - Create agent tiers for escalation
+7. **Enable persistentmembers** - Maintain agent login state
+8. **Set maxlen** - Prevent excessive queue buildup
+
+## Troubleshooting
+
+### Calls Not Reaching Agents
+
+1. Check queue members: `queue show queuename`
+2. Verify agents not paused
+3. Check `ringinuse` setting
+4. Verify agent devices registered
+
+### Agents Not Receiving Calls
+
+1. Check member status: `queue show`
+2. Verify not paused: `queue unpause member`
+3. Check penalty levels
+4. Verify device registration
+
+### No Music on Hold
+
+1. Check `musicclass` references valid MOH class
+2. Verify musiconhold.conf configuration
+3. Check sound files exist
+
+## Related Configuration
+
+- [extensions.conf](/config/extensions-conf) - Queue dialplan integration
+- [sip.conf](/config/sip-conf) - Agent device configuration
+- musiconhold.conf - Music on hold configuration

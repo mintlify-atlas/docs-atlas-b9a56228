@@ -1,0 +1,607 @@
+---
+title: 'Call Center Implementation'
+description: 'Complete guide to implementing a health center call center with queues, IVR, and database integration'
+---
+
+## Overview
+
+This guide demonstrates a complete call center implementation for a health center (Centro de Salud), showcasing advanced Asterisk features including:
+
+- Interactive Voice Response (IVR)
+- Call queuing with multiple agents
+- Database-driven user authentication
+- Team-based call routing
+- Voicemail integration
+- Business hours scheduling
+
+## System Architecture
+
+```
+                     ┌─────────────────────┐
+                     │  External Caller    │
+                     │  (757112233)        │
+                     └──────────┬──────────┘
+                                │
+                     ┌──────────▼──────────┐
+                     │   IVR System        │
+                     │  (Hours Check)      │
+                     └──────────┬──────────┘
+                                │
+              ┌─────────────────┴─────────────────┐
+              │                                   │
+    ┌─────────▼──────────┐           ┌──────────▼─────────┐
+    │  Registered Users  │           │ Unregistered Users │
+    │  (ID Verification) │           │   (Direct Queue)   │
+    └─────────┬──────────┘           └──────────┬─────────┘
+              │                                   │
+    ┌─────────▼──────────────────────────────────▼─────────┐
+    │              Reception Queue                          │
+    │  Agents: 101, 102, 103 (registered)                  │
+    │  Agent: 110 (unregistered)                           │
+    └─────────┬────────────────────────────────────────────┘
+              │
+    ┌─────────▼─────────────────────────────────┐
+    │         Team Distribution                  │
+    ├────────────┬──────────┬──────────┬────────┤
+    │ Reception  │Direction │ Doctors  │ Nurses │
+    │   (1XX)    │  (2XX)   │  (3XX)   │ (4XX)  │
+    └────────────┴──────────┴──────────┴────────┘
+```
+
+## Specifications
+
+### General Requirements
+
+- **Main phone number**: 757112233
+- **Business hours**: Monday-Friday, 08:00-20:00
+- **Outside hours**: Automated message with business hours
+- **Hold music**: Custom music while waiting in queue
+
+### User Registration Flow
+
+1. Caller dials main number
+2. IVR asks: Press 1 if registered, 2 if not registered
+3. **Registered users**: Must enter 4-digit ID (verified against database)
+4. **Unregistered users**: Route directly to reception
+5. Music plays while waiting for available agent
+
+### Team Structure
+
+| Team | Extensions | Queue Strategy | Features |
+|------|------------|----------------|----------|
+| **Reception** | 101-103 (registered)<br/>110 (unregistered) | leastrecent | Route calls to other teams |
+| **Direction** | 201-203 | leastrecent | Can capture calls from any team |
+| **Doctors** | 301-303 | leastrecent | Team-only call capture |
+| **Nurses** | 401-403 | leastrecent | Team-only call capture |
+
+### Common Features (All Teams)
+
+- TLS/SSL encryption for all connections
+- Personal voicemail (access: `*<extension>`)
+- Voicemail PIN = User ID number
+- Call capture within team (except Direction)
+- Group calling via `X00` extensions (e.g., 100 = all reception)
+- External calling capability
+- SIP messaging between extensions
+
+## Database Schema
+
+Create the database and tables:
+
+```sql
+CREATE TABLE personal(
+  extension INTEGER NOT NULL,
+  nombre VARCHAR(20) NOT NULL,
+  equipo VARCHAR(10) NOT NULL,
+  id INTEGER NOT NULL,
+  PRIMARY KEY (id)
+);
+
+CREATE TABLE usuarios(
+  nombre VARCHAR(20) NOT NULL,
+  id INTEGER NOT NULL,
+  PRIMARY KEY (id)
+);
+
+-- Staff members
+INSERT INTO personal VALUES(101, "MARIA", "RECEPCION", 1001);
+INSERT INTO personal VALUES(102, "IGNACIO", "RECEPCION", 1002);
+INSERT INTO personal VALUES(103, "MANUEL", "RECEPCION", 1003);
+INSERT INTO personal VALUES(110, "CRISTINA", "RECEPCION", 1004);
+INSERT INTO personal VALUES(201, "BELEN", "DIRECCION", 2001);
+INSERT INTO personal VALUES(202, "JAVIER", "DIRECCION", 2002);
+INSERT INTO personal VALUES(203, "OSCAR", "DIRECCION", 2003);
+INSERT INTO personal VALUES(301, "LAURA", "DOCTORES", 3001);
+INSERT INTO personal VALUES(302, "ANA", "DOCTORES", 3002);
+INSERT INTO personal VALUES(303, "JORGE", "DOCTORES", 3003);
+INSERT INTO personal VALUES(401, "ISABEL", "ENFERMERIA", 4001);
+INSERT INTO personal VALUES(402, "ANTONIO", "ENFERMERIA", 4002);
+INSERT INTO personal VALUES(403, "RAQUEL", "ENFERMERIA", 4003);
+
+-- Registered patients
+INSERT INTO usuarios VALUES("JULIA", 50);
+INSERT INTO usuarios VALUES("MARIO", 51);
+INSERT INTO usuarios VALUES("PAULA", 52);
+INSERT INTO usuarios VALUES("NATIVIDAD", 53);
+INSERT INTO usuarios VALUES("MARIA JESUS", 54);
+INSERT INTO usuarios VALUES("MANUEL", 55);
+INSERT INTO usuarios VALUES("JUAN", 56);
+INSERT INTO usuarios VALUES("CARLOS", 57);
+INSERT INTO usuarios VALUES("GRACIA", 58);
+INSERT INTO usuarios VALUES("AMELIA", 59);
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON asteriskdb.* TO 'asterisk'@'localhost';
+```
+
+## Configuration Files
+
+### func_odbc.conf - Database Queries
+
+This file defines ODBC functions to query the database:
+
+```ini
+[usuario]
+dsn=asterisk
+readsql=SELECT nombre from usuarios WHERE id='${SQL_ESC(${ARG1})}'
+
+[extension]
+dsn=asterisk
+readsql=SELECT nombre from personal where extension='${SQL_ESC(${ARG1})}'
+
+[pin]
+dsn=asterisk
+readsql=SELECT id from personal where extension='${SQL_ESC(${ARG1})}'
+
+[equipo]
+dsn=asterisk
+readsql=SELECT lower(equipo) from personal where extension='${SQL_ESC(${ARG1})}'
+```
+
+### queues.conf - Call Queue Configuration
+
+```ini
+[general]
+persistentmembers = yes
+monitor-type = MixMonitor
+
+[registrados]
+strategy = leastrecent
+timeout = 30
+member => SIP/101
+member => SIP/102
+member => SIP/103
+
+[noregistrados]
+strategy = leastrecent
+timeout = 30
+member => SIP/110
+```
+
+**Key Parameters:**
+- `strategy = leastrecent`: Calls the agent who hung up longest ago
+- `timeout = 30`: Ring each agent for 30 seconds maximum
+- `persistentmembers`: Queue members survive Asterisk restarts
+
+### extensions.conf - Dialplan
+
+<Tabs>
+  <Tab title="Incoming Calls & IVR">
+    ```ini
+    [exterior]
+    ; Main entry point with business hours check
+    exten => 757112233,1,GotoIfTime(8:00-20:00,mon-fri,*,*?abierto,1,1)
+    same => n,Festival(En estos momentos no hay nadie que te pueda atender)
+    same => n,Festival(Nuestro horario es de 8 a 20 horas de lunes a viernes)
+    same => n,Hangup()
+    
+    [abierto]
+    ; IVR menu
+    exten => 1,1,Answer()
+    same => n,Festival(Bienvenido al centro de salud)
+    same => n(loop),Festival(Presione)
+    same => n,SayNumber(1)
+    same => n,Festival(si es un usuario registrado o)
+    same => n,SayNumber(2)
+    same => n,Festival(en caso contrario)
+    same => n,Read(opcion,,1,3)
+    same => n,GotoIf($["${opcion}" = "1"]?10,1)
+    same => n,GotoIf($["${opcion}" = "2"]?20,1)
+    same => n,Festival(Opcion incorrecta)
+    same => n,Goto(1,loop)
+    
+    ; Registered user authentication
+    exten => 10,1(id),Festival(Por favor marque su numero de identificacion)
+    same => n,Read(id,,4,3,5)
+    same => n,Set(nombre=${ODBC_usuario(${id})})
+    same => n,GotoIf($["${nombre}" != ""]?recepcion,1,1)
+    same => n,Festival(Usuario no encontrado)
+    same => n,Goto(10,id)
+    
+    ; Unregistered users
+    exten => 20,1,Goto(recepcion,2,1)
+    ```
+  </Tab>
+  
+  <Tab title="Reception Context">
+    ```ini
+    [recepcion]
+    ; Registered users queue
+    exten => 1,1,Set(CHANNEL(musicclass)=recepcion)
+    same => n,Answer()
+    same => n,Festival(Hola ${nombre})
+    same => n(reg),Festival(Por favor espere a que le atiendan)
+    same => n,Queue(registrados,,,,60)
+    same => n,Goto(1,reg)
+    
+    ; Unregistered users queue
+    exten => 2,1,Set(CHANNEL(musicclass)=recepcion)
+    same => n,Answer()
+    same => n(noreg),Festival(Por favor espere a que le atiendan)
+    same => n,Queue(noregistrados,,,,60)
+    same => n,Goto(2,noreg)
+    
+    ; Direct extension calling
+    exten => _XXX,1,Set(extension=${EXTEN})
+    same => n,Set(nombre=${ODBC_extension(${extension})})
+    same => n,GotoIf($["${nombre}" != ""]?llamar,${extension},1)
+    same => n,Festival(La extension ${extension} no se encuentra disponible)
+    
+    ; Voicemail access
+    exten => _*XXX,1,Set(llamante=${CALLERID(num)})
+    same => n,Goto(buzon-voz,1,1)
+    
+    ; Call pickup (reception team only)
+    exten => _*8.,1,Set(extension=${EXTEN:2})
+    same => n,Set(pref=${extension:0:1})
+    same => n,GotoIf($["${pref}" = "1"]?llamar,8,1)
+    same => n,Festival(No tiene permiso para capturar una llamada)
+    
+    ; Group calling
+    exten => _X00,1,Festival(Llamada a grupo ${EXTEN})
+    same => n,Goto(llamar-grupo,${EXTEN},1)
+    ```
+  </Tab>
+  
+  <Tab title="Team Contexts">
+    ```ini
+    [direccion]
+    ; Direction team - can capture from any team
+    exten => _XXX,1,Set(extension=${EXTEN})
+    same => n,Set(nombre=${ODBC_extension(${extension})})
+    same => n,GotoIf($["${nombre}" != ""]?llamar,${extension},1)
+    
+    exten => _*8.,1,Set(extension=${EXTEN:2})
+    same => n,Goto(llamar,8,1)  ; No restrictions
+    
+    [doctores]
+    ; Doctors team - can only capture doctor calls
+    exten => _*8.,1,Set(extension=${EXTEN:2})
+    same => n,Set(pref=${extension:0:1})
+    same => n,GotoIf($["${pref}" = "3"]?llamar,8,1)
+    same => n,Festival(No tiene permiso para capturar una llamada)
+    
+    [enfermeria]
+    ; Nurses team - can only capture nurse calls
+    exten => _*8.,1,Set(extension=${EXTEN:2})
+    same => n,Set(pref=${extension:0:1})
+    same => n,GotoIf($["${pref}" = "4"]?llamar,8,1)
+    same => n,Festival(No tiene permiso para capturar una llamada)
+    ```
+  </Tab>
+  
+  <Tab title="Common Functions">
+    ```ini
+    [llamar]
+    ; Make a call
+    exten => _XXX,1,Festival(Llamando a ${nombre})
+    same => n,Dial(SIP/${extension},15)
+    same => n,VoiceMail(${extension})
+    same => n,Hangup()
+    
+    ; Execute call pickup
+    exten => 8,1,Festival(Capturando llamada a la extension ${extension})
+    same => n,Set(equipo=${ODBC_equipo(${extension})})
+    same => n,Pickup(${extension}@${equipo})
+    
+    [llamar-grupo]
+    ; Group calling for each team
+    exten => 100,1,Dial(SIP/101&SIP/102&SIP/103&SIP/110,60)
+    exten => 200,1,Dial(SIP/201&SIP/202&SIP/203,60)
+    exten => 300,1,Dial(SIP/301&SIP/302&SIP/303,60)
+    exten => 400,1,Dial(SIP/401&SIP/402&SIP/403,60)
+    
+    [buzon-voz]
+    ; Voicemail with PIN verification
+    exten => 1,1,Festival(Para acceder a su buzon de voz)
+    same => n(pin),Festival(Marque su numero de identificacion privado)
+    same => n,Read(pin,,4,3,5)
+    same => n,Set(idpin=${ODBC_pin(${llamante})})
+    same => n,GotoIf($["${pin}" = "${idpin}"]?2,1)
+    same => n,Festival(Numero de identificacion erroneo)
+    same => n,Goto(1,pin)
+    
+    exten => 2,1,VoiceMailMain(${llamante})
+    same => n,Hangup()
+    ```
+  </Tab>
+  
+  <Tab title="Messaging">
+    ```ini
+    [suscribir]
+    ; Presence hints for messaging
+    exten => 101,hint,SIP/101
+    exten => 102,hint,SIP/102
+    exten => 103,hint,SIP/103
+    exten => 110,hint,SIP/110
+    exten => 201,hint,SIP/201
+    ; ... (all other extensions)
+    
+    [mensajes]
+    ; SIP message routing
+    exten => _X.,1,Set(dest=${EXTEN})
+    same => n,Set(remitente=${CUT(MESSAGE(from),<,2)})
+    same => n,Set(remitente=${CUT(remitente,@,1)})
+    same => n,Set(remitente=${CUT(remitente,:,2)})
+    same => n,Set(texto=${MESSAGE(body)})
+    same => n,Set(MESSAGE(body)=${remitente}: ${texto})
+    same => n,Set(nombre=${ODBC_extension(${remitente})})
+    same => n,MessageSend(sip:${dest}, Centro de Mensajes(CdM))
+    same => n,GotoIf($["${MESSAGE_SEND_STATUS}" != "SUCCESS"]?fallo,s,1)
+    
+    [fallo]
+    ; Message delivery failure notification
+    exten => s,1,Set(MESSAGE(body)=CdM: El mensaje no ha sido enviado)
+    same => n,MessageSend(${remit},Centro de Mensajes(CdM))
+    ```
+  </Tab>
+</Tabs>
+
+## Key Features Explained
+
+### 1. Business Hours Checking
+
+```ini
+exten => 757112233,1,GotoIfTime(8:00-20:00,mon-fri,*,*?abierto,1,1)
+```
+
+**GotoIfTime** syntax:
+- `8:00-20:00`: Hour range
+- `mon-fri`: Days of week
+- `*`: Any day of month
+- `*`: Any month
+- `?abierto,1,1`: Jump to context `abierto`, extension `1`, priority `1` if true
+
+### 2. Database Integration
+
+The system uses ODBC to query the MariaDB database:
+
+```ini
+; Verify registered user
+Set(nombre=${ODBC_usuario(${id})})
+
+; Get extension owner name
+Set(nombre=${ODBC_extension(${extension})})
+
+; Get voicemail PIN
+Set(idpin=${ODBC_pin(${llamante})})
+
+; Get team for call pickup
+Set(equipo=${ODBC_equipo(${extension})})
+```
+
+### 3. Queue Strategy
+
+The `leastrecent` strategy ensures fair call distribution:
+- Tracks when each agent last hung up a call
+- Routes next call to agent with longest idle time
+- Prevents call clustering on specific agents
+
+### 4. Call Pickup Permissions
+
+Different teams have different pickup capabilities:
+
+| Team | Can Pickup |
+|------|------------|
+| Reception (1XX) | Only reception calls |
+| Direction (2XX) | Any team's calls |
+| Doctors (3XX) | Only doctor calls |
+| Nurses (4XX) | Only nurse calls |
+
+Implemented via prefix checking:
+```ini
+Set(pref=${extension:0:1})  ; Get first digit
+GotoIf($["${pref}" = "3"]?llamar,8,1)  ; Allow only 3XX
+```
+
+## Testing the System
+
+<Steps>
+  <Step title="Test Business Hours">
+    Call the main number outside business hours:
+    ```
+    Dial: 757112233
+    Expected: Closed message with hours
+    ```
+    
+    Modify time in dialplan temporarily to test:
+    ```ini
+    GotoIfTime(8:00-20:00,mon-fri,*,*?abierto,1,1)
+    ; Change to: GotoIfTime(0:00-23:59,mon-sun,*,*?abierto,1,1)
+    ```
+  </Step>
+  
+  <Step title="Test Registered User Flow">
+    1. Call 757112233 during business hours
+    2. Press 1 for registered user
+    3. Enter valid ID: `50` (JULIA)
+    4. Verify greeting: "Hola JULIA"
+    5. Wait for queue connection
+  </Step>
+  
+  <Step title="Test Queue Routing">
+    Have agents 101, 102, 103 available and make multiple calls to observe round-robin distribution.
+  </Step>
+  
+  <Step title="Test Team Features">
+    **Voicemail:**
+    ```
+    From extension 101:
+    Dial: *101
+    Enter PIN: 1001
+    ```
+    
+    **Call Pickup:**
+    ```
+    Phone 102 is ringing
+    From phone 101: Dial *8102
+    ```
+    
+    **Group Call:**
+    ```
+    Dial: 100 (rings all reception)
+    ```
+  </Step>
+  
+  <Step title="Test Database Integration">
+    Monitor Asterisk CLI while making calls:
+    ```
+    CLI> set verbose 5
+    ```
+    
+    You should see ODBC queries executing:
+    ```
+    Executing ODBC_usuario(50)
+    res_odbc: Query successful
+    ```
+  </Step>
+</Steps>
+
+## Monitoring and Troubleshooting
+
+### View Queue Status
+
+```
+CLI> queue show registrados
+```
+
+Output shows:
+- Current calls in queue
+- Available agents
+- Agent status (busy/idle)
+- Call statistics
+
+### View Active Calls
+
+```
+CLI> core show channels
+```
+
+### Debug Database Queries
+
+```bash
+sudo vim /etc/asterisk/logger.conf
+```
+
+Add:
+```ini
+[logfiles]
+messages => notice,warning,error,verbose(3)
+```
+
+Then:
+```
+CLI> logger reload
+CLI> core set verbose 5
+```
+
+### Common Issues
+
+<Tabs>
+  <Tab title="Queue Issues">
+    **Problem**: Calls not routing to queue
+    
+    **Solution**:
+    ```
+    CLI> queue reload all
+    CLI> queue show
+    ```
+    
+    Verify agents are logged in:
+    ```
+    CLI> sip show peers
+    ```
+  </Tab>
+  
+  <Tab title="Database Issues">
+    **Problem**: User verification fails
+    
+    **Solution**:
+    ```
+    CLI> odbc show
+    ```
+    
+    Test ODBC connection:
+    ```bash
+    echo "SELECT * FROM usuarios" | isql -v asterisk-connector asterisk asterisk
+    ```
+  </Tab>
+  
+  <Tab title="TTS Issues">
+    **Problem**: Festival not working
+    
+    **Solution**:
+    ```bash
+    sudo systemctl status festival.service
+    sudo systemctl restart festival.service
+    ```
+    
+    Test Festival:
+    ```
+    CLI> core show application Festival
+    ```
+  </Tab>
+</Tabs>
+
+## Performance Optimization
+
+### Queue Tuning
+
+Adjust based on call volume:
+
+```ini
+[registrados]
+strategy = leastrecent
+timeout = 30          ; Agent ring time
+retry = 5             ; Seconds between retries
+maxlen = 20           ; Maximum queue length
+announce-frequency = 30  ; Position announcements
+announce-holdtime = yes  ; Tell estimated wait
+```
+
+### Database Connection Pooling
+
+```ini
+[asterisk]
+enabled => yes
+dsn => asterisk-connector
+username => asterisk
+password => asterisk
+pre-connect => yes
+max_connections => 5  ; Connection pool size
+```
+
+## Scaling Considerations
+
+- **Multiple queues**: Create separate queues per department for better isolation
+- **Dynamic agents**: Allow agents to login/logout from queues
+- **Call recording**: Enable MixMonitor for quality assurance
+- **Real-time monitoring**: Integrate with queue monitoring dashboards
+- **Overflow routing**: Route calls to voicemail after maximum wait time
+
+## Next Steps
+
+- Implement call recording for quality assurance
+- Add agent login/logout functionality
+- Create real-time queue monitoring dashboard
+- Integrate with CRM system for caller information popup
+- Add callback functionality for long queues

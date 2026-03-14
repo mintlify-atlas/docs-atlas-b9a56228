@@ -1,0 +1,96 @@
+---
+title: Static IP Configuration
+description: Assign a static IP address to your server for consistent SSH access
+---
+
+Before configuring SSH, it's recommended to assign a static IP address to your server's network interface. This ensures you won't need to find the IP address each time you want to connect.
+
+## Check Current IP Address
+
+First, identify the current IP assigned to your network interface (typically **ens33**):
+
+```shell
+ip address
+```
+
+## Configure Network Interfaces
+
+<Steps>
+  <Step title="Edit the interfaces file">
+    ```shell
+    sudo vim /etc/network/interfaces
+    ```
+  </Step>
+
+  <Step title="Configure static IP">
+    Modify the file to set a static IP address. In this example, we'll use `192.168.1.200`:
+
+    ```conf
+    # This file describes the network interfaces available on your system
+    # and how to activate them. For more information, see interfaces(5).
+
+    source /etc/network/interfaces.d/*
+
+    # The loopback network interface
+    auto lo
+    iface lo inet loopback
+
+    # The primary network interface
+    allow-hotplug ens33
+    iface ens33 inet static
+        address 192.168.1.200
+        gateway 192.168.1.1
+    ```
+
+    <Warning>
+      Pay attention to indentation. The address and gateway lines should be indented with spaces.
+    </Warning>
+  </Step>
+
+  <Step title="Configure DNS servers">
+    Edit the DNS resolver configuration:
+
+    ```shell
+    sudo vim /etc/resolv.conf
+    ```
+
+    Add DNS servers (Google DNS and Cloudflare DNS in this example):
+
+    ```conf
+    nameserver 8.8.8.8
+    nameserver 1.1.1.1
+    ```
+  </Step>
+
+  <Step title="Restart networking">
+    Restart the networking service and reboot the system:
+
+    ```shell
+    sudo systemctl restart networking
+    ```
+
+    ```shell
+    sudo reboot
+    ```
+  </Step>
+</Steps>
+
+## Verify Configuration
+
+After the system reboots, verify that the static IP has been assigned correctly:
+
+```shell
+ip address
+```
+
+You should see your configured static IP address on the ens33 interface.
+
+## Test Connectivity
+
+Test that DNS resolution and internet connectivity work:
+
+```shell
+ping -c3 www.debian.org
+```
+
+You should receive responses confirming that your network configuration is working properly.

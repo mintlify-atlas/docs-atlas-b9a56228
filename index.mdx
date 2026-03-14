@@ -1,97 +1,169 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "Asterisk PBX Tutorial"
+description: "Comprehensive guide for installing, configuring, and deploying Asterisk PBX systems with advanced telephony features"
 ---
 
-## Setting up
+<div className="hero-section" style={{
+  background: 'linear-gradient(135deg, #ee7924 0%, #d15a0a 100%)',
+  padding: '4rem 2rem',
+  borderRadius: '0px',
+  color: '#ffffff',
+  marginBottom: '3rem'
+}}>
+  <h1 style={{
+    fontSize: '2.5rem',
+    fontWeight: '700',
+    marginBottom: '1rem',
+    color: '#ffffff'
+  }}>
+    Master Asterisk PBX Configuration
+  </h1>
+  <p style={{
+    fontSize: '1.25rem',
+    opacity: '0.95',
+    maxWidth: '800px',
+    margin: '0 auto'
+  }}>
+    Learn to build production-ready VoIP systems with voicemail, call queues, database integration, and advanced telephony features
+  </p>
+</div>
 
-Get your documentation site up and running in minutes.
+## Get Started
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
+Everything you need to deploy a complete Asterisk PBX system.
 
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
+<CardGroup cols={2}>
   <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
+    title="Introduction"
+    icon="book-open"
+    href="/introduction"
   >
-    Edit your docs locally and preview them in real time.
+    Learn about Asterisk PBX and what this tutorial covers
   </Card>
   <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
+    title="Technical Requirements"
+    icon="server"
+    href="/technical-requirements"
   >
-    Customize the design and colors of your site to match your brand.
-  </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+    System requirements and technical specifications
   </Card>
   <Card
-    title="API documentation"
+    title="Nomenclature"
     icon="terminal"
-    href="/api-reference/introduction"
+    href="/nomenclature"
   >
-    Auto-generate API documentation from OpenAPI specifications.
-  </Card>
-</Columns>
-
-## Create beautiful pages
-
-Everything you need to create world-class documentation.
-
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
+    Understand command syntax and conventions used throughout
   </Card>
   <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
+    title="Installation Guide"
+    icon="download"
+    href="/installation/asterisk-installation"
   >
-    Add sample code to demonstrate how to use your product.
+    Step-by-step Asterisk installation on Debian
+  </Card>
+</CardGroup>
+
+## Key Features
+
+Build powerful telephony features into your PBX system.
+
+<CardGroup cols={3}>
+  <Card
+    title="Voicemail"
+    icon="voicemail"
+    href="/features/voicemail"
+  >
+    Configure voicemail boxes with custom greetings
   </Card>
   <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
+    title="Call Queues"
+    icon="users"
+    href="/features/call-queues"
   >
-    Display images and other media.
+    Set up call distribution and queue management
   </Card>
   <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
+    title="Text-to-Speech"
+    icon="volume"
+    href="/features/text-to-speech"
   >
-    Write once and reuse across your docs.
+    Add Festival TTS for dynamic voice prompts
   </Card>
-</Columns>
+  <Card
+    title="Call Security"
+    icon="shield"
+    href="/features/call-security"
+  >
+    Encrypt calls with TLS/SSL certificates
+  </Card>
+  <Card
+    title="Database Integration"
+    icon="database"
+    href="/database/mariadb-setup"
+  >
+    Connect Asterisk to MariaDB via ODBC
+  </Card>
+  <Card
+    title="Multi-PBX"
+    icon="network-wired"
+    href="/advanced/pbx-interconnection"
+  >
+    Interconnect multiple PBX systems with DUNDi
+  </Card>
+</CardGroup>
 
-## Need inspiration?
+## Advanced Topics
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+Take your PBX system to the next level.
+
+<CardGroup cols={2}>
+  <Card
+    title="Call Center Implementation"
+    icon="headset"
+    href="/advanced/call-center-implementation"
+  >
+    Build a complete call center with queues, routing, and business hours
+  </Card>
+  <Card
+    title="DUNDi Protocol"
+    icon="route"
+    href="/advanced/dundi-protocol"
+  >
+    Configure distributed dial plan discovery between PBX systems
+  </Card>
+</CardGroup>
+
+## Configuration Reference
+
+Complete configuration file documentation and examples.
+
+<CardGroup cols={2}>
+  <Card
+    title="Configuration Files"
+    icon="file-code"
+    href="/config/sip-conf"
+  >
+    Detailed reference for sip.conf, extensions.conf, and more
+  </Card>
+  <Card
+    title="Working Examples"
+    icon="flask"
+    href="/examples/basic-setup"
+  >
+    Real-world configuration examples you can use
+  </Card>
+  <Card
+    title="Softphones"
+    icon="mobile"
+    href="/reference/softphones"
+  >
+    Recommended SIP clients for testing your setup
+  </Card>
+  <Card
+    title="Troubleshooting"
+    icon="wrench"
+    href="/reference/troubleshooting"
+  >
+    Common issues and solutions
+  </Card>
+</CardGroup>

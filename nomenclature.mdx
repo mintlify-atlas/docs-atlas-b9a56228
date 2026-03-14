@@ -1,0 +1,99 @@
+---
+title: Nomenclature
+description: Understanding the command prefixes and notation used throughout the Asterisk PBX Tutorial
+---
+
+## Command Prefixes
+
+Throughout this tutorial, commands are prefixed with specific symbols to indicate the environment where they should be executed. Understanding these prefixes is essential for following the tutorial correctly.
+
+### $ (Dollar Sign) - Linux Terminal
+
+Commands prefixed with `$` are executed in the [Linux terminal](https://maker.pro/linux/tutorial/basic-linux-commands-for-beginners).
+
+```shell
+$ [comando]
+```
+
+**Example:**
+```shell
+$ sudo apt-get update
+$ ip address
+```
+
+<Info>
+  These are standard bash commands executed in your Debian Linux environment.
+</Info>
+
+### : (Colon) - Vim Editor
+
+Commands prefixed with `:` are executed within the [vim](https://www.fprintf.net/vimCheatSheet.html) text editor.
+
+```
+: [comando]
+```
+
+**Example:**
+```
+:wq
+:set number
+```
+
+<Tip>
+  Vim commands are entered in command mode. Press `Esc` to enter command mode, then type the colon followed by your command.
+</Tip>
+
+### CLI> - Asterisk Console
+
+Commands prefixed with `CLI>` are executed in the [Asterisk console](https://openwebinars.net/blog/tutorial-asterisk-cli-command-line-interface/) (Command Line Interface).
+
+```
+CLI> [comando]
+```
+
+**Example:**
+```
+CLI> core show channels
+CLI> sip show peers
+```
+
+<Note>
+  The Asterisk CLI provides powerful diagnostic and management capabilities for your PBX system.
+</Note>
+
+### MariaDB> - Database Console
+
+Commands prefixed with `MariaDB>` are executed in the [MariaDB database](https://mariadb.com/kb/en/mariadb-basics/) console.
+
+```mariadb
+MariaDB> [comando]
+```
+
+**Example:**
+```mariadb
+MariaDB> SHOW DATABASES;
+MariaDB> USE asterisk;
+```
+
+<Info>
+  MariaDB commands are SQL statements used to manage the database integration with Asterisk.
+</Info>
+
+## Text Formatting Conventions
+
+### Quoted Text - File Content
+
+When text appears as a blockquote, it represents plain text content from a configuration file that needs to be modified or added.
+
+> Texto del\
+> archivo\
+> a modificar
+
+<Warning>
+  Pay careful attention to indentation when copying configuration file content, as improper formatting can cause errors in Asterisk.
+</Warning>
+
+## Additional Resources
+
+- **Original Code**: The unmodified original code files are available in the project repository
+- **Links of Interest**: Additional helpful resources and references are provided throughout the tutorial

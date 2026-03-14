@@ -1,0 +1,293 @@
+---
+title: Testing the Integration
+description: Verify Asterisk can successfully query MariaDB and use the results in the dialplan
+---
+
+## Overview
+
+Now that all components are configured, we'll test the integration with a simple dialplan example that queries the database and displays the results.
+
+## Test Scenario
+
+We'll modify extension 100 (the receptionist/IVR) to display a console trace showing: "Esta llamando {nombre} con extension {extension}" ("Calling: {name} with extension {extension}") when someone calls it.
+
+## Prerequisites
+
+Before testing, ensure you have:
+
+1. MariaDB installed and running
+2. Database `asteriskdb` created with `usuarios` table populated
+3. ODBC connector configured and tested
+4. Asterisk compiled with ODBC modules
+5. `res_odbc.conf` and `func_odbc.conf` configured
+
+## Dialplan Configuration
+
+<Steps>
+  <Step title="Review func_odbc.conf">
+    Verify your ODBC function is defined:
+
+    ```bash
+    sudo vim /etc/asterisk/func_odbc.conf
+    ```
+
+    Ensure it contains:
+
+    ```ini
+    [info]
+    dsn=asterisk
+    readsql=SELECT CONCAT(nombre,' con extension ', extension) from usuarios WHERE nombre='${SQL_ESC(${ARG1})}'
+    ```
+  </Step>
+
+  <Step title="Edit extensions.conf">
+    Open the dialplan configuration:
+
+    ```bash
+    sudo vim /etc/asterisk/extensions.conf
+    ```
+  </Step>
+
+  <Step title="Modify the receptionist extension">
+    Under the `[empleado]` context (or your equivalent context), find the receptionist section and modify it:
+
+    ```ini
+    ;-----centralita
+    exten => 100,1,NoOp(Centralita de distribucion de llamadas)
+     same => n,NoOp(Esta llamando ${ODBC_info(${CALLERID(number)})})
+     same => n,Playback(silence/1)
+     same => n,Playback(mimusica/primavera)
+     same => n,Hangup()
+    ```
+
+    **Line-by-line explanation:**
+    1. **Line 1**: Logs that the receptionist extension was called
+    2. **Line 2**: Queries the database using the caller's number and logs the result
+    3. **Line 3**: Plays 1 second of silence
+    4. **Line 4**: Plays music to the caller
+    5. **Line 5**: Hangs up the call
+
+    <Note>
+      `${CALLERID(number)}` retrieves the calling extension number, which is passed to the `ODBC_info()` function.
+    </Note>
+  </Step>
+
+  <Step title="Reload modules">
+    In the Asterisk CLI, reload both modules:
+
+    ```
+    CLI> module reload func_odbc.so
+    CLI> dialplan reload
+    ```
+  </Step>
+</Steps>
+
+## Running the Test
+
+<Steps>
+  <Step title="Enable verbose logging">
+    In the Asterisk CLI, increase verbosity to see detailed logs:
+
+    ```
+    CLI> core set verbose 5
+    ```
+  </Step>
+
+  <Step title="Make a test call">
+    From a registered SIP phone (for example, extension 4000 - javier's phone), dial extension 100.
+  </Step>
+
+  <Step title="Observe the console output">
+    In the Asterisk CLI, you should see output similar to:
+
+    ```
+    -- Executing [100@empleado:1] NoOp("SIP/4000-00000001", "Centralita de distribucion de llamadas") in new stack
+    -- Executing [100@empleado:2] NoOp("SIP/4000-00000001", "Esta llamando javier con extension 4000") in new stack
+    -- Executing [100@empleado:3] Playback("SIP/4000-00000001", "silence/1") in new stack
+    -- Executing [100@empleado:4] Playback("SIP/4000-00000001", "mimusica/primavera") in new stack
+    -- Executing [100@empleado:5] Hangup("SIP/4000-00000001", "") in new stack
+    ```
+
+    The critical line is:
+    ```
+    NoOp("SIP/4000-00000001", "Esta llamando javier con extension 4000")
+    ```
+  </Step>
+</Steps>
+
+## Understanding the Test
+
+### Database Query Flow
+
+1. Caller dials extension 100
+2. Asterisk retrieves caller ID (4000)
+3. `ODBC_info(4000)` function is called
+4. Function queries database: `SELECT CONCAT(nombre,' con extension ', extension) from usuarios WHERE nombre='4000'`
+5. Database returns: "javier con extension 4000"
+6. Result is displayed in NoOp
+
+### What If the Query Fails?
+
+If the caller is not in the database, the `ODBC_info()` function will return an empty value:
+
+```
+NoOp("SIP/9999-00000001", "Esta llamando ")
+```
+
+<Tip>
+  You can check for empty results in your dialplan:
+  ```ini
+  same => n,GotoIf($["${ODBC_info(${CALLERID(number)})}" = ""]?unknown:known)
+  same => n(unknown),NoOp(Caller not found in database)
+  same => n,Goto(continue)
+  same => n(known),NoOp(Esta llamando ${ODBC_info(${CALLERID(number)})})
+  same => n(continue),Playback(silence/1)
+  ```
+</Tip>
+
+## Troubleshooting
+
+### No Database Output
+
+<AccordionGroup>
+  <Accordion title="Verify ODBC connection">
+    ```
+    CLI> odbc show
+    ```
+    Ensure the connection shows as "Connected: Yes"
+  </Accordion>
+
+  <Accordion title="Test the function directly">
+    ```
+    CLI> dialplan eval "\${ODBC_info(javier)}"
+    ```
+    Should return: "javier con extension 4000"
+  </Accordion>
+
+  <Accordion title="Check function definition">
+    ```bash
+    cat /etc/asterisk/func_odbc.conf
+    ```
+    Verify the function name and SQL query are correct.
+  </Accordion>
+
+  <Accordion title="Enable ODBC debugging">
+    In the CLI:
+    ```
+    CLI> odbc set debug on
+    ```
+    Then make another test call to see detailed ODBC logs.
+  </Accordion>
+</AccordionGroup>
+
+### SQL Query Errors
+
+If you see SQL errors in the logs:
+
+1. **Check table and column names** match your database schema
+2. **Verify user permissions** with `SHOW GRANTS FOR 'asterisk'@'localhost';`
+3. **Test the query directly** in MariaDB:
+   ```sql
+   SELECT CONCAT(nombre,' con extension ', extension) from usuarios WHERE nombre='javier';
+   ```
+
+## Advanced Testing
+
+### Creating Additional ODBC Functions
+
+Once the basic test works, try creating more complex functions:
+
+#### Example: Get extension by name
+
+```ini
+[get_extension]
+dsn=asterisk
+readsql=SELECT extension FROM usuarios WHERE nombre='${SQL_ESC(${ARG1})}'
+```
+
+Use in dialplan:
+```ini
+same => n,Set(EXT=${ODBC_get_extension(javier)})
+same => n,NoOp(Javier's extension is ${EXT})
+```
+
+#### Example: Update user extension
+
+```ini
+[update_extension]
+dsn=asterisk
+writesql=UPDATE usuarios SET extension='${SQL_ESC(${ARG2})}' WHERE nombre='${SQL_ESC(${ARG1})}'
+```
+
+Use in dialplan:
+```ini
+same => n,Set(RESULT=${ODBC_update_extension(javier,4050)})
+same => n,NoOp(Update result: ${RESULT})
+```
+
+#### Example: Insert new user
+
+```ini
+[add_user]
+dsn=asterisk
+writesql=INSERT INTO usuarios (nombre, extension) VALUES ('${SQL_ESC(${ARG1})}', '${SQL_ESC(${ARG2})}')
+```
+
+### Testing with Multiple Callers
+
+Call extension 100 from different registered devices to see different database results:
+
+- Call from extension 4000 → "Esta llamando javier con extension 4000"
+- Call from extension 4001 → "Esta llamando belen con extension 4001"
+- Call from extension 5000 → "Esta llamando direccion con extension 5000"
+
+## Success Criteria
+
+Your integration is working correctly if:
+
+<Steps>
+  <Step title="Connection verified">
+    - `odbc show` displays "Connected: Yes"
+  </Step>
+
+  <Step title="Function test passes">
+    - `dialplan eval` returns expected database values
+  </Step>
+
+  <Step title="Dialplan execution succeeds">
+    - NoOp displays caller information from database
+    - No errors appear in Asterisk CLI
+  </Step>
+
+  <Step title="Data is accurate">
+    - Information displayed matches database records
+    - Different callers show different information
+  </Step>
+</Steps>
+
+## Next Steps
+
+With a working database integration, you can:
+
+1. **Implement dynamic call routing** based on database values
+2. **Store call logs** using CDR (Call Detail Records) with `cdr_odbc`
+3. **Manage SIP users** in the database using Asterisk Realtime Architecture
+4. **Create IVR menus** with database-driven options
+5. **Build custom applications** that modify user data through database queries
+
+## Real-World Applications
+
+<CardGroup cols={2}>
+  <Card title="Dynamic Call Forwarding" icon="phone-arrow-right">
+    Store forwarding numbers in the database and update them via web interface
+  </Card>
+  <Card title="User Management" icon="users">
+    Manage extensions, passwords, and permissions without editing config files
+  </Card>
+  <Card title="Call Statistics" icon="chart-line">
+    Store and analyze call data for reporting and monitoring
+  </Card>
+  <Card title="Time-based Routing" icon="clock">
+    Store business hours and routing rules in the database
+  </Card>
+</CardGroup>

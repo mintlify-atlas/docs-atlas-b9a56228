@@ -1,0 +1,497 @@
+---
+title: 'Troubleshooting'
+description: 'Common problems and solutions when working with Asterisk PBX'
+icon: 'wrench'
+---
+
+## Common Issues and Solutions
+
+This guide covers the most common problems encountered when installing, configuring, and using Asterisk PBX, along with their solutions.
+
+<AccordionGroup>
+  <Accordion title="Unable to connect to remote asterisk (does /var/run/asterisk.ctl exist?)">
+    ### Problem
+    
+    When you try to launch the Asterisk console, you get this error:
+    
+    ```bash
+    Unable to connect to remote asterisk (does /var/run/asterisk.ctl exist?)
+    ```
+    
+    ### Cause
+    
+    This error is most likely due to permission problems with the `asterisk` user. The user may not have proper access to the required directories.
+    
+    ### Solution
+    
+    **Step 1:** Fix ownership of Asterisk directories
+    
+    ```bash
+    sudo chown -R asterisk: /var/{lib,log,run,spool}/asterisk /usr/lib/asterisk /etc/asterisk
+    ```
+    
+    **Step 2:** Fix permissions
+    
+    ```bash
+    sudo chmod -R 750 /var/{lib,log,run,spool}/asterisk /usr/lib/asterisk /etc/asterisk
+    ```
+    
+    **Step 3:** Reboot the system
+    
+    ```bash
+    sudo reboot
+    ```
+    
+    ### Alternative Solution
+    
+    If the above doesn't work, you can try launching Asterisk manually:
+    
+    ```bash
+    sudo asterisk -&
+    ```
+    
+    <Note>
+    After fixing permissions, verify that the asterisk service starts automatically on boot:
+    ```bash
+    sudo systemctl enable asterisk
+    sudo systemctl status asterisk
+    ```
+    </Note>
+  </Accordion>
+
+  <Accordion title="Asterisk fails to start after installation">
+    ### Problem
+    
+    Asterisk service won't start or crashes immediately after installation.
+    
+    ### Common Causes & Solutions
+    
+    **1. Configuration file syntax errors**
+    
+    Check Asterisk logs for errors:
+    ```bash
+    tail -f /var/log/asterisk/messages
+    ```
+    
+    Validate your configuration files for syntax errors, especially:
+    - `sip.conf`
+    - `extensions.conf`
+    - `voicemail.conf`
+    
+    **2. Port conflicts**
+    
+    Check if port 5060 is already in use:
+    ```bash
+    sudo netstat -tulpn | grep 5060
+    ```
+    
+    If another service is using the port, either stop that service or change the Asterisk port in `sip.conf`.
+    
+    **3. Missing dependencies**
+    
+    Ensure all required libraries are installed:
+    ```bash
+    sudo apt-get install build-essential libxml2-dev libncurses5-dev linux-headers-$(uname -r) libsqlite3-dev libssl-dev
+    ```
+  </Accordion>
+
+  <Accordion title="No audio in calls (one-way or two-way)">
+    ### Problem
+    
+    Calls connect but there's no audio, or audio only works in one direction.
+    
+    ### Solutions
+    
+    **1. NAT configuration**
+    
+    In `sip.conf`, ensure NAT settings are correct:
+    ```ini
+    [general]
+    nat=force_rport,comedia
+    directmedia=no
+    ```
+    
+    For each peer:
+    ```ini
+    [extension]
+    nat=force_rport,comedia
+    canreinvite=no
+    ```
+    
+    **2. Firewall issues**
+    
+    Open required ports:
+    ```bash
+    # SIP signaling
+    sudo ufw allow 5060/udp
+    
+    # RTP media (adjust range as needed)
+    sudo ufw allow 10000:20000/udp
+    ```
+    
+    **3. RTP configuration**
+    
+    Check `rtp.conf` for proper RTP port range:
+    ```ini
+    [general]
+    rtpstart=10000
+    rtpend=20000
+    ```
+  </Accordion>
+
+  <Accordion title="Softphone cannot register to Asterisk">
+    ### Problem
+    
+    SIP softphone shows "Registration Failed" or similar error.
+    
+    ### Solutions
+    
+    **1. Verify credentials**
+    
+    Check that `sip.conf` has the correct user configuration:
+    ```ini
+    [username]
+    type=friend
+    secret=password
+    host=dynamic
+    context=your_context
+    ```
+    
+    **2. Check Asterisk is listening**
+    
+    From Asterisk CLI:
+    ```
+    CLI> sip show peers
+    CLI> sip show registry
+    ```
+    
+    **3. Firewall blocking connections**
+    
+    Ensure port 5060 is open:
+    ```bash
+    sudo ufw status
+    sudo ufw allow 5060/udp
+    ```
+    
+    **4. Reload SIP configuration**
+    
+    ```
+    CLI> sip reload
+    ```
+  </Accordion>
+
+  <Accordion title="Voicemail not working">
+    ### Problem
+    
+    Calls don't go to voicemail, or voicemail messages aren't saved.
+    
+    ### Solutions
+    
+    **1. Check voicemail.conf**
+    
+    Verify mailbox is configured:
+    ```ini
+    [default]
+    4000 => 1234,Username,email@example.com
+    ```
+    
+    **2. Check directory permissions**
+    
+    ```bash
+    sudo chown -R asterisk:asterisk /var/spool/asterisk/voicemail
+    sudo chmod -R 750 /var/spool/asterisk/voicemail
+    ```
+    
+    **3. Verify dialplan**
+    
+    In `extensions.conf`:
+    ```ini
+    exten => 4000,1,Dial(SIP/user,15)
+    same => n,VoiceMail(4000)
+    same => n,Hangup()
+    ```
+    
+    **4. Reload voicemail**
+    
+    ```
+    CLI> voicemail reload
+    ```
+  </Accordion>
+
+  <Accordion title="Database connection fails (ODBC/MariaDB)">
+    ### Problem
+    
+    Asterisk cannot connect to MariaDB/MySQL database.
+    
+    ### Solutions
+    
+    **1. Test ODBC connection**
+    
+    ```bash
+    echo "SELECT 1" | isql -v asterisk-connector username password
+    ```
+    
+    **2. Check res_odbc.conf**
+    
+    ```ini
+    [asterisk]
+    enabled => yes
+    dsn => asterisk-connector
+    username => asterisk
+    password => asterisk
+    pre-connect => yes
+    ```
+    
+    **3. Verify database permissions**
+    
+    ```sql
+    GRANT SELECT, INSERT, UPDATE, DELETE ON asteriskdb.* TO 'asterisk'@'localhost';
+    FLUSH PRIVILEGES;
+    ```
+    
+    **4. Check ODBC driver installation**
+    
+    ```bash
+    myodbc-installer -d -l
+    ```
+    
+    **5. Reload ODBC module**
+    
+    ```
+    CLI> module reload res_odbc.so
+    CLI> odbc show
+    ```
+  </Accordion>
+
+  <Accordion title="Festival TTS not working">
+    ### Problem
+    
+    Text-to-speech with Festival doesn't play audio or Asterisk can't connect to Festival.
+    
+    ### Solutions
+    
+    **1. Check Festival service**
+    
+    ```bash
+    sudo systemctl status festival
+    sudo systemctl start festival
+    ```
+    
+    **2. Verify Festival is listening**
+    
+    ```bash
+    sudo netstat -tulpn | grep festival
+    ```
+    
+    **3. Test Festival manually**
+    
+    ```bash
+    echo "Hello world" | festival --tts
+    ```
+    
+    **4. Check app_festival module**
+    
+    ```
+    CLI> core show application festival
+    CLI> module load app_festival.so
+    ```
+    
+    **5. Verify Spanish voices installed**
+    
+    ```bash
+    ls -l /usr/share/festival/voices/spanish/
+    ```
+  </Accordion>
+
+  <Accordion title="TLS/Secure calling certificate errors">
+    ### Problem
+    
+    Secure calling with TLS fails, certificate errors in logs.
+    
+    ### Solutions
+    
+    **1. Verify certificates exist**
+    
+    ```bash
+    ls -l /etc/asterisk/keys/
+    ```
+    
+    Should show:
+    - `ca.crt` and `ca.key` (Certificate Authority)
+    - `asterisk.pem` (Server certificate)
+    - `clientname.pem` (Client certificates)
+    
+    **2. Check certificate permissions**
+    
+    ```bash
+    sudo chown asterisk:asterisk /etc/asterisk/keys/*
+    sudo chmod 640 /etc/asterisk/keys/*.pem
+    sudo chmod 640 /etc/asterisk/keys/*.key
+    ```
+    
+    **3. Verify sip.conf TLS configuration**
+    
+    ```ini
+    [general]
+    tlsenable=yes
+    tlsbindaddr=0.0.0.0
+    tlscertfile=/etc/asterisk/keys/asterisk.pem
+    tlscafile=/etc/asterisk/keys/ca.crt
+    tlscipher=ALL
+    tlsclientmethod=tlsv1
+    ```
+    
+    **4. Check crypto module**
+    
+    ```
+    CLI> module show like crypto
+    CLI> keys show
+    ```
+  </Accordion>
+
+  <Accordion title="Call pickup not working">
+    ### Problem
+    
+    Cannot capture/pickup ringing calls from other extensions.
+    
+    ### Solutions
+    
+    **1. Verify call groups in sip.conf**
+    
+    ```ini
+    [extension1]
+    callgroup=1
+    pickupgroup=1
+    
+    [extension2]
+    callgroup=1
+    pickupgroup=1
+    ```
+    
+    **2. Check dialplan pickup configuration**
+    
+    ```ini
+    exten => _*8.,1,Pickup(${EXTEN:2})
+    ```
+    
+    **3. Test with direct pickup**
+    
+    Dial `*8` followed by the extension number being called.
+  </Accordion>
+
+  <Accordion title="Queue calls not distributing properly">
+    ### Problem
+    
+    Queue calls aren't distributed to agents, or always go to the same agent.
+    
+    ### Solutions
+    
+    **1. Check queues.conf**
+    
+    ```ini
+    [queuename]
+    strategy = leastrecent
+    timeout = 30
+    member => SIP/agent1
+    member => SIP/agent2
+    ```
+    
+    **2. Verify agents are logged in**
+    
+    ```
+    CLI> queue show queuename
+    ```
+    
+    **3. Reload queue configuration**
+    
+    ```
+    CLI> queue reload all
+    ```
+    
+    **4. Check agent availability**
+    
+    Ensure agents are registered:
+    ```
+    CLI> sip show peers
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## General Debugging Tips
+
+### Enable Verbose Logging
+
+Increase verbosity in the Asterisk console:
+```bash
+sudo asterisk -rvvvvvv
+```
+
+Or from the CLI:
+```
+CLI> core set verbose 5
+CLI> core set debug 5
+```
+
+### Check Log Files
+
+Key log files to monitor:
+
+```bash
+# Main message log
+tail -f /var/log/asterisk/messages
+
+# Full log (if enabled)
+tail -f /var/log/asterisk/full
+
+# CDR records
+column -s, -t < /var/log/asterisk/cdr-csv/Master.csv | less
+```
+
+### Use CLI Diagnostic Commands
+
+Useful Asterisk CLI commands for troubleshooting:
+
+```
+CLI> sip show peers          # Show all SIP peers
+CLI> sip show registry       # Show registration status
+CLI> core show channels      # Show active channels
+CLI> dialplan show           # Show dialplan
+CLI> module show             # Show loaded modules
+CLI> core show applications  # Show available applications
+```
+
+### Configuration Validation
+
+Before reloading, validate your configuration:
+
+```bash
+# Check for syntax errors
+sudo asterisk -rx "dialplan reload"
+sudo asterisk -rx "sip reload"
+```
+
+Watch for error messages in the output.
+
+## Getting Help
+
+If you're still stuck:
+
+1. **Check the logs** - Most issues leave traces in `/var/log/asterisk/messages`
+2. **Search the Asterisk Wiki** - [https://wiki.asterisk.org](https://wiki.asterisk.org)
+3. **Asterisk Community Forums** - [https://community.asterisk.org](https://community.asterisk.org)
+4. **VOIP-Info** - [https://www.voip-info.org](https://www.voip-info.org)
+
+<Note>
+When asking for help, always include:
+- Your Asterisk version (`asterisk -V`)
+- Operating system and version
+- Relevant configuration snippets
+- Error messages from logs
+- What you've already tried
+</Note>
+
+## Related Resources
+
+- [Configuration Files Reference](/reference/configuration-files)
+- [Softphones Guide](/reference/softphones)
+- [Testing Your Installation](/installation/testing)

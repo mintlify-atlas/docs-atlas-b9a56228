@@ -1,0 +1,238 @@
+---
+title: SIP Messages
+description: Configure SIP messaging in Asterisk PBX to enable text messaging between extensions
+---
+
+# SIP Messages (Centro de mensajes)
+
+Asterisk supports SIP messaging, allowing users to send text messages between extensions. Note that this is **not instant messaging** but rather a message center for SIP-based text communication.
+
+## Overview
+
+The SIP messaging system provides:
+- Text message sending between extensions
+- Message routing and delivery
+- Delivery status notifications
+- Sender identification
+- Error handling for failed deliveries
+
+## Configuration
+
+<Steps>
+
+### Configure sip.conf
+
+Enable SIP messaging support:
+
+```bash
+sudo vim /etc/asterisk/sip.conf
+```
+
+Add these directives to the `[general]` section:
+
+```ini
+[general]
+;-----Para los mensajes-----
+accept_outofcall_message=yes
+outofcall_message_context=mensajes
+auth_message_requests=yes
+subscribecontext=suscribir
+```
+
+**Directives explained:**
+- `accept_outofcall_message=yes` - Accept messages outside of active calls
+- `outofcall_message_context=mensajes` - Context for handling messages
+- `auth_message_requests=yes` - Require authentication for messages
+- `subscribecontext=suscribir` - Context for presence subscriptions
+
+### Configure extensions.conf
+
+Set up the messaging contexts:
+
+```bash
+sudo vim /etc/asterisk/extensions.conf
+```
+
+Add the subscription context:
+
+```ini
+[suscribir]
+exten => 4000,hint,SIP/javier
+exten => 4001,hint,SIP/belen
+```
+
+The `hint` directive maps extensions to SIP devices for presence information.
+
+### Create the messaging context
+
+Add the message handling logic:
+
+```ini
+[mensajes]
+exten => _X.,1,NoOp(Mensaje de ${MESSAGE(from)})
+same => n,NoOp(Mensaje para ${MESSAGE(to)})
+same => n,NoOp(Cuerpo del mensaje: ${MESSAGE(body)})
+same => n,Set(dest=${EXTEN})
+same => n,Set(remitente=${CUT(MESSAGE(from),<,2)})
+same => n,Set(remitente=${CUT(remitente,@,1)})
+same => n,Set(remitente=${CUT(remitente,:,2)})
+same => n,Set(texto=${MESSAGE(body)})
+same => n,Set(MESSAGE(body)=${remitente}: ${texto})
+same => n,GotoIf($["${EXTEN}" = "4000"]?4000)
+same => n,GotoIf($["${EXTEN}" = "4001"]?4001)
+same => n,MessageSend(${EXTEN}, Centro de Mensajes(CdM))
+same => n,Noop(Estado del mensaje ${MESSAGE_SEND_STATUS})
+same => n,GotoIf($["${MESSAGE_SEND_STATUS}" != "SUCCESS"]?fallo,s,1)
+same => n,Hangup()
+
+exten => 4000,4000,NoOp(Mensaje a Javier)
+same => n,MessageSend(sip:javier, Centro de Mensajes(CdM))
+same => n,Noop(Estado del mensaje ${MESSAGE_SEND_STATUS})
+same => n,GotoIf($["${MESSAGE_SEND_STATUS}" != "SUCCESS"]?fallo,s,1)
+same => n,Hangup()
+
+exten => 4001,4001,NoOp(Mensaje a Belen)
+same => n,MessageSend(sip:belen, Centro de Mensajes(CdM))
+same => n,Noop(Estado del mensaje ${MESSAGE_SEND_STATUS})
+same => n,GotoIf($["${MESSAGE_SEND_STATUS}" != "SUCCESS"]?fallo,s,1)
+same => n,Hangup()
+```
+
+### Add error handling
+
+Create a failure context:
+
+```ini
+[fallo]
+exten => s,1,Set(MESSAGE(body)=CdM: El mensaje "${texto}" para ${dest} no ha sido enviado)
+same => n,Set(remit=${CUT(MESSAGE(from),<,2)})
+same => n,Set(remit=${CUT(remit,@,1)})
+same => n,MessageSend(${remit},Centro de Mensajes(CdM))
+same => n,NoOp(Estado del mensaje ${MESSAGE_SEND_STATUS})
+same => n,Hangup()
+```
+
+This sends a failure notification back to the sender if delivery fails.
+
+### Reload configuration
+
+```
+CLI> dialplan reload
+CLI> sip reload
+```
+
+</Steps>
+
+## How It Works
+
+### Message Flow
+
+1. **Sender** composes message to extension (e.g., 4001)
+2. **Message arrives** at the `mensajes` context
+3. **Sender extraction** - Parse MESSAGE(from) to get sender name
+4. **Message formatting** - Prepend sender name to message body
+5. **Routing** - Check destination extension and route accordingly
+6. **Delivery** - Send via MessageSend() function
+7. **Status check** - Verify MESSAGE_SEND_STATUS
+8. **Error handling** - If failed, jump to `fallo` context
+
+### Dialplan Functions
+
+**NoOp** - No operation (logs to console)
+```ini
+exten => _X.,1,NoOp(Mensaje de ${MESSAGE(from)})
+```
+
+**Set** - Assign values to variables
+```ini
+same => n,Set(dest=${EXTEN})
+```
+
+**CUT** - Extract portions of a string
+```ini
+same => n,Set(remitente=${CUT(MESSAGE(from),<,2)})
+```
+
+**GotoIf** - Conditional branching
+```ini
+same => n,GotoIf($["${EXTEN}" = "4000"]?4000)
+```
+
+**MessageSend** - Send the SIP message
+```ini
+same => n,MessageSend(sip:javier, Centro de Mensajes(CdM))
+```
+
+## Usage
+
+### Sending a message
+
+<Steps>
+
+1. Open your SIP softphone
+2. Select the messaging feature
+3. Enter the destination extension (e.g., `4001`)
+4. Type your message
+5. Send
+
+</Steps>
+
+### Example message exchange
+
+**From Belen (4001) to Javier (4000):**
+```
+Belen types: "Hola, ¿cómo estás?"
+Javier receives: "belen: Hola, ¿cómo estás?"
+```
+
+The sender name is automatically prepended by the message center.
+
+### Sending to non-existent extension
+
+If you send to an unconfigured extension:
+
+```
+Sender receives: "CdM: El mensaje 'your text' para 4999 no ha sido enviado"
+```
+
+## Console Output
+
+You can monitor messages in the Asterisk CLI:
+
+```
+CLI> core set verbose 3
+```
+
+Example output:
+```
+-- Executing [4001@mensajes:1] NoOp("Message/ast_msg_queue", "Mensaje de <sip:belen@192.168.1.180>")
+-- Executing [4001@mensajes:2] NoOp("Message/ast_msg_queue", "Mensaje para sip:4001@192.168.1.180")
+-- Executing [4001@mensajes:3] NoOp("Message/ast_msg_queue", "Cuerpo del mensaje: Hola")
+```
+
+## Supported Softphones
+
+SIP messaging works with softphones that support SIP MESSAGE method:
+
+- Blink
+- Linphone
+- Zoiper
+- X-Lite
+- MicroSIP
+
+Check your softphone documentation for messaging features.
+
+## Limitations
+
+- This is **not** instant messaging (no presence, typing indicators, etc.)
+- Messages are not stored/queued if recipient is offline
+- No message history or conversation threading
+- Basic delivery confirmation only
+
+## Troubleshooting
+
+- Verify SIP messaging is enabled: `sip show settings | grep message`
+- Check subscription context: `core show hints`
+- Monitor message traffic: `sip set debug on`
+- Ensure softphone supports SIP MESSAGE method
+- Check firewall allows SIP messaging (UDP 5060)

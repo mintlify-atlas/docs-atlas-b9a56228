@@ -1,0 +1,272 @@
+---
+title: Call Groups
+description: Configure call groups (ring groups) in Asterisk PBX to distribute incoming calls to multiple extensions simultaneously
+---
+
+# Call Groups (Llamadas a grupo)
+
+Call groups, also known as ring groups or hunt groups, allow a single extension to ring multiple phones simultaneously. The first person to answer gets the call. This is useful for departments or teams where any available member can handle incoming calls.
+
+<Note>
+  This is **not** a conference call. Only one person answers, and others stop ringing.
+</Note>
+
+## Overview
+
+Call groups enable:
+- Simultaneous ringing of multiple extensions
+- First-available call pickup
+- Department-wide extensions
+- Load distribution among team members
+- Timeout handling if no one answers
+
+## Configuration
+
+<Steps>
+
+### Add a user to test
+
+First, create a new SIP user for testing:
+
+```bash
+sudo vim /etc/asterisk/sip.conf
+```
+
+Add a new user:
+
+```ini
+[oscar]
+type=friend
+secret=201097
+context=entrantes
+host=dynamic
+canreinvite=no
+nat=force_rport,comedia
+```
+
+This creates user 'oscar' in the 'entrantes' context.
+
+### Configure the call group
+
+Edit the dial plan:
+
+```bash
+sudo vim /etc/asterisk/extensions.conf
+```
+
+Add a ring group extension:
+
+```ini
+[entrantes]
+exten => 4040,1,NoOp(Llamando al grupo 'empleados')
+same => n,Dial(SIP/javier&SIP/belen,60)
+same => n,Hangup()
+```
+
+**Explanation:**
+- `4040` - The group extension number
+- `SIP/javier&SIP/belen` - Multiple devices separated by `&`
+- `60` - Ring for 60 seconds before timeout
+- If no one answers within 60 seconds, the call ends
+
+### Reload configuration
+
+```
+CLI> dialplan reload
+CLI> sip reload
+```
+
+</Steps>
+
+## Complete Configuration Examples
+
+### sip.conf - Multiple users
+
+```ini
+[general]
+port=5060
+directmedia=no
+language=es
+context=public
+
+[javier]
+type=friend
+secret=310195
+context=empleado
+host=dynamic
+canreinvite=no
+nat=force_rport,comedia
+
+[belen]
+type=friend
+secret=120995
+context=empleado
+host=dynamic
+canreinvite=no
+nat=force_rport,comedia
+
+[oscar]
+type=friend
+secret=201097
+context=entrantes
+host=dynamic
+canreinvite=no
+nat=force_rport,comedia
+```
+
+### extensions.conf - Call group setup
+
+```ini
+[empleado]
+;-----Extensiones habilitadas-----
+exten => 4000,1,NoOp(Llamando a Javier)
+same => n,Dial(SIP/javier,15)
+same => n,VoiceMail(${EXTEN})
+same => n,Hangup()
+
+exten => 4001,1,NoOp(Llamando a Belen)
+same => n,Dial(SIP/belen,15)
+same => n,VoiceMail(${EXTEN})
+same => n,Hangup()
+
+[entrantes]
+exten => 4040,1,NoOp(Llamando al grupo 'empleados')
+same => n,Dial(SIP/javier&SIP/belen,60)
+same => n,Hangup()
+```
+
+## Advanced Dial Patterns
+
+### Ring multiple groups
+
+```ini
+exten => 5000,1,NoOp(Ring all staff)
+same => n,Dial(SIP/javier&SIP/belen&SIP/oscar,30)
+same => n,Hangup()
+```
+
+### Sequential ring (hunt group)
+
+For sequential ringing instead of simultaneous:
+
+```ini
+exten => 5001,1,NoOp(Try javier first)
+same => n,Dial(SIP/javier,15)
+same => n,Dial(SIP/belen,15)
+same => n,Dial(SIP/oscar,15)
+same => n,Hangup()
+```
+
+This tries javier for 15 seconds, then belen, then oscar.
+
+### Ring group with voicemail
+
+```ini
+exten => 4040,1,NoOp(Llamando al grupo 'empleados')
+same => n,Dial(SIP/javier&SIP/belen,60)
+same => n,VoiceMail(4040)
+same => n,Hangup()
+```
+
+If no one answers, the call goes to mailbox 4040.
+
+## Usage Example
+
+When Oscar (extension in 'entrantes' context) dials 4040:
+
+1. **Extension 4040 is dialed**
+2. **Both Javier's and Belen's phones ring** simultaneously
+3. **Belen answers first**
+4. **Javier's phone stops ringing**
+5. **Belen and Oscar are connected**
+
+Asterisk console shows:
+```
+-- Executing [4040@entrantes:1] NoOp("SIP/oscar-00000001", "Llamando al grupo 'empleados'")
+-- Executing [4040@entrantes:2] Dial("SIP/oscar-00000001", "SIP/javier&SIP/belen,60")
+-- Called SIP/javier
+-- Called SIP/belen
+-- SIP/belen-00000002 is ringing
+-- SIP/javier-00000003 is ringing
+-- SIP/belen-00000002 answered SIP/oscar-00000001
+```
+
+## Dial Application Options
+
+The Dial application supports many options:
+
+```ini
+Dial(Technology/Resource[&Technology2/Resource2...][,timeout][,options][,URL])
+```
+
+**Common options:**
+- `t` - Allow the called party to transfer
+- `T` - Allow the calling party to transfer
+- `r` - Generate ringing tone for caller
+- `m` - Provide music on hold instead of ringing
+- `A(x)` - Play announcement to called party
+
+Example with options:
+```ini
+exten => 4040,1,Dial(SIP/javier&SIP/belen,60,tr)
+```
+
+## Multiple Device Strategies
+
+### Parallel (Simultaneous)
+
+Ring all devices at once:
+```ini
+Dial(SIP/dev1&SIP/dev2&SIP/dev3)
+```
+
+### Sequential (Hunt)
+
+Try devices one at a time:
+```ini
+Dial(SIP/dev1,10)
+Dial(SIP/dev2,10)
+Dial(SIP/dev3,10)
+```
+
+### Hybrid
+
+Ring groups in sequence:
+```ini
+Dial(SIP/dev1&SIP/dev2,15)  ; Try first group
+Dial(SIP/dev3&SIP/dev4,15)  ; Then second group
+```
+
+## Monitoring Call Groups
+
+Check active channels:
+```
+CLI> core show channels
+```
+
+Show channel details:
+```
+CLI> core show channel SIP/javier-00000001
+```
+
+Enable verbose logging:
+```
+CLI> core set verbose 3
+```
+
+## Troubleshooting
+
+- Verify all SIP users are registered: `sip show peers`
+- Check if devices are reachable
+- Ensure timeout is reasonable (not too short)
+- Test individual extensions before creating groups
+- Monitor console output during test calls
+- Check network connectivity between devices
+
+## Best Practices
+
+1. **Set appropriate timeouts** - Too short and no one answers, too long and callers wait
+2. **Limit group size** - Too many simultaneous rings can cause issues
+3. **Use contexts wisely** - Separate internal and external call groups
+4. **Add voicemail fallback** - Don't lose calls when everyone's busy
+5. **Test thoroughly** - Verify all group members can receive calls

@@ -1,0 +1,188 @@
+---
+title: Testing Installation
+description: Verify your Asterisk installation with a test call between two users
+---
+
+Let's verify that Asterisk is working correctly by setting up two test users and making a call between them.
+
+## Configure SIP Users
+
+We'll create two users: **javier** (extension 4000) and **belen** (extension 4001).
+
+<Steps>
+  <Step title="Edit sip.conf">
+    ```shell
+    sudo vim /etc/asterisk/sip.conf
+    ```
+
+    Add the following configuration:
+
+    ```conf
+    [general]
+    port=5060
+    directmedia=no
+    language=es
+    context=public
+
+    [javier]
+    type=friend
+    secret=12345678
+    context=empleado
+    host=dynamic
+    canreinvite=no
+    nat=force_rport
+
+    [belen]
+    type=friend
+    secret=12345678
+    context=empleado
+    host=dynamic
+    canreinvite=no
+    nat=force_rport,comedia
+    ```
+
+    ### Configuration Explanation
+
+    - **port=5060**: The port where Asterisk listens for SIP connections
+    - **directmedia=no**: Prevents RTP media from going directly between phones (not all devices support this)
+    - **language=es**: Sets Spanish as the default language
+    - **type=friend**: Allows both incoming and outgoing calls
+    - **secret**: The password for authentication
+    - **context=empleado**: The dialplan context for these users
+    - **host=dynamic**: Allows the device to register dynamically with Asterisk
+    - **canreinvite=no**: Stops sending re-invitations once the call is established
+    - **nat=force_rport,comedia**: NAT traversal settings for symmetric RTP
+  </Step>
+
+  <Step title="Configure dialplan">
+    Edit the extensions configuration:
+
+    ```shell
+    sudo vim /etc/asterisk/extensions.conf
+    ```
+
+    Add the employee context with extensions:
+
+    ```conf
+    [empleado]
+    exten => 4000,1,Dial(SIP/javier)
+    exten => 4001,1,Dial(SIP/belen)
+    ```
+
+    This assigns extension 4000 to javier and 4001 to belen.
+  </Step>
+
+  <Step title="Reload Asterisk configuration">
+    Access the Asterisk CLI:
+
+    ```shell
+    sudo asterisk -rvvvvvvc
+    ```
+
+    Reload the dialplan and SIP configuration:
+
+    ```
+    CLI> dialplan reload
+    ```
+
+    ```
+    CLI> sip reload
+    ```
+  </Step>
+</Steps>
+
+## Configure Softphones
+
+You'll need two SIP softphones to test. Popular options include Zoiper, 3CX, Blink, or Linphone.
+
+<Steps>
+  <Step title="Configure first softphone (Javier)">
+    - **Username**: javier
+    - **Password**: 12345678
+    - **Domain/Server**: 192.168.1.200 (your Asterisk server IP)
+    - **Port**: 5060
+  </Step>
+
+  <Step title="Configure second softphone (Belen)">
+    - **Username**: belen
+    - **Password**: 12345678
+    - **Domain/Server**: 192.168.1.200 (your Asterisk server IP)
+    - **Port**: 5060
+  </Step>
+</Steps>
+
+## Verify Registration
+
+In the Asterisk CLI, verify that both users have registered:
+
+```
+CLI> sip show peers
+```
+
+You should see both **javier** and **belen** listed with their IP addresses and status as OK.
+
+## Make a Test Call
+
+<Steps>
+  <Step title="Initiate call from Javier to Belen">
+    In javier's softphone, dial **4001** (belen's extension).
+  </Step>
+
+  <Step title="Answer on Belen's phone">
+    Belen's phone should ring. Answer the call.
+  </Step>
+
+  <Step title="Verify audio">
+    Speak in both directions to confirm two-way audio is working.
+  </Step>
+
+  <Step title="Check CLI output">
+    In the Asterisk CLI, you should see the call trace showing:
+    - The incoming call from javier
+    - The dial to belen
+    - The call being answered
+    - When the call is hung up
+  </Step>
+</Steps>
+
+## Expected CLI Output
+
+You should see output similar to this in the Asterisk console:
+
+```
+-- Executing [4001@empleado:1] Dial("SIP/javier-00000001", "SIP/belen") in new stack
+-- Called SIP/belen
+-- SIP/belen-00000002 is ringing
+-- SIP/belen-00000002 answered SIP/javier-00000001
+-- Channel SIP/javier-00000001 joined 'simple_bridge' basic-bridge
+-- Channel SIP/belen-00000002 joined 'simple_bridge' basic-bridge
+```
+
+## Troubleshooting
+
+If the call doesn't work:
+
+<Warning>
+  **Registration Issues**
+  - Check that both softphones show as registered in `sip show peers`
+  - Verify firewall allows UDP port 5060
+  - Confirm the server IP address is correct in softphone configuration
+
+  **No Audio**
+  - Check firewall allows UDP ports 10000-20000 (RTP range)
+  - Try setting `directmedia=no` in sip.conf if not already set
+  - Verify NAT settings if calling over the internet
+
+  **Wrong Context**
+  - Ensure the dialplan context matches the context in sip.conf
+  - Run `dialplan show empleado` to verify extensions exist
+</Warning>
+
+## Next Steps
+
+Now that you've verified basic calling works, you can:
+- Configure voicemail
+- Add more users
+- Set up call forwarding
+- Configure queues and IVR menus
+- Enable call recording

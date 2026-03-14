@@ -1,0 +1,281 @@
+---
+title: 'Business Hours'
+description: 'Configure time-based call routing with GotoIfTime to handle calls differently during and outside business hours'
+---
+
+## Overview
+
+Most organizations don't operate 24/7. This guide shows how to implement business hours in Asterisk, ensuring calls are handled appropriately based on the time, day, and date.
+
+## The GotoIfTime Application
+
+Asterisk provides the `GotoIfTime()` application to conditionally route calls based on temporal conditions.
+
+### Syntax
+
+```
+GotoIfTime(<times>,<days_of_week>,<days_of_month>,<months>?[destination][:else_destination])
+```
+
+**Parameters:**
+- `<times>` - Time range (e.g., `8:00-20:00`)
+- `<days_of_week>` - Days (e.g., `mon-fri`, `mon,wed,fri`)
+- `<days_of_month>` - Day numbers (e.g., `1-15`, `*` for all)
+- `<months>` - Months (e.g., `jan-jun`, `*` for all)
+- `?[destination]` - Where to go if condition is TRUE
+- `[:else_destination]` - Optional: where to go if FALSE
+
+## Basic Business Hours Configuration
+
+Let's configure business hours for Monday-Friday, 8:00 AM to 8:00 PM.
+
+### Dialplan Configuration
+
+Edit `/etc/asterisk/extensions.conf`:
+
+```ini extensions.conf
+[entrantes]
+;---- Route to extension with business hours check
+;---- Monday-Friday from 8:00 to 20:00
+exten => _995554XXX,1,Set(extension=${EXTEN:5})
+same => n,NoOp(Calling extension ${extension})
+same => n,GotoIfTime(8:00-20:00,mon-fri,*,*?empleado,${extension},1)
+same => n,Festival(En estos momentos no hay nadie que te pueda atender)
+same => n,Festival(Nuestro horario es de 8 a 20 horas de lunes a viernes)
+same => n,Hangup()
+```
+
+<Steps>
+
+<Step title="Extract the extension">
+```ini
+exten => _995554XXX,1,Set(extension=${EXTEN:5})
+```
+Store the internal extension number (last 4 digits) for later use.
+</Step>
+
+<Step title="Check business hours">
+```ini
+same => n,GotoIfTime(8:00-20:00,mon-fri,*,*?empleado,${extension},1)
+```
+
+**If the current time matches:**
+- Hours: 8:00 AM to 8:00 PM
+- Days: Monday through Friday
+- Any day of month (`*`)
+- Any month (`*`)
+
+**Then:** Jump to the `empleado` context at the extracted extension.
+</Step>
+
+<Step title="Outside business hours">
+```ini
+same => n,Festival(En estos momentos no hay nadie que te pueda atender)
+same => n,Festival(Nuestro horario es de 8 a 20 horas de lunes a viernes)
+same => n,Hangup()
+```
+
+**If the time doesn't match:** Play a message and hang up.
+</Step>
+
+</Steps>
+
+## Testing the Configuration
+
+### Reload the Dialplan
+
+```
+CLI> dialplan reload
+```
+
+### Test During Business Hours
+
+During weekday business hours, calling 995554001 should:
+1. Check the time condition
+2. Route to extension 4001 in the `empleado` context
+3. Ring the employee's phone
+
+### Test Outside Business Hours
+
+Outside business hours or on weekends, the caller should hear:
+> "En estos momentos no hay nadie que te pueda atender. Nuestro horario es de 8 a 20 horas de lunes a viernes."
+
+## Advanced Time Patterns
+
+### Multiple Time Windows
+
+Handle lunch breaks or split shifts:
+
+```ini extensions.conf
+exten => _995554XXX,1,Set(extension=${EXTEN:5})
+same => n,NoOp(Checking business hours)
+; Morning shift: 8:00-12:00
+same => n,GotoIfTime(8:00-12:00,mon-fri,*,*?empleado,${extension},1)
+; Afternoon shift: 14:00-18:00  
+same => n,GotoIfTime(14:00-18:00,mon-fri,*,*?empleado,${extension},1)
+same => n,Playback(closed)
+same => n,Hangup()
+```
+
+### Weekend Hours
+
+Different hours for weekends:
+
+```ini extensions.conf
+exten => _995554XXX,1,Set(extension=${EXTEN:5})
+; Weekday hours
+same => n,GotoIfTime(8:00-20:00,mon-fri,*,*?empleado,${extension},1)
+; Weekend hours (reduced)
+same => n,GotoIfTime(10:00-14:00,sat-sun,*,*?empleado,${extension},1)
+same => n,Playback(closed)
+same => n,Hangup()
+```
+
+### Holiday Exclusions
+
+Close on specific dates:
+
+```ini extensions.conf
+exten => _995554XXX,1,Set(extension=${EXTEN:5})
+; Christmas Day - closed
+same => n,GotoIfTime(*,*,25,dec?holiday,s,1)
+; New Year's Day - closed
+same => n,GotoIfTime(*,*,1,jan?holiday,s,1)
+; Normal business hours
+same => n,GotoIfTime(8:00-20:00,mon-fri,*,*?empleado,${extension},1)
+same => n,Playback(closed)
+same => n,Hangup()
+
+[holiday]
+exten => s,1,Playback(holiday-greeting)
+same => n,Hangup()
+```
+
+### Summer Schedule
+
+Seasonal hours:
+
+```ini extensions.conf
+exten => _995554XXX,1,Set(extension=${EXTEN:5})
+; Summer hours (July-August): shorter days
+same => n,GotoIfTime(8:00-15:00,mon-fri,*,jul-aug?empleado,${extension},1)
+; Regular hours (rest of year)
+same => n,GotoIfTime(8:00-20:00,mon-fri,*,*?empleado,${extension},1)
+same => n,Playback(closed)
+same => n,Hangup()
+```
+
+## Voicemail During Off-Hours
+
+Direct callers to voicemail instead of just hanging up:
+
+```ini extensions.conf
+[entrantes]
+exten => _995554XXX,1,Set(extension=${EXTEN:5})
+same => n,GotoIfTime(8:00-20:00,mon-fri,*,*?empleado,${extension},1)
+; Outside hours - go to voicemail
+same => n,Answer()
+same => n,Playback(after-hours)
+same => n,VoiceMail(${extension}@default,u)
+same => n,Hangup()
+```
+
+## Time Zone Considerations
+
+<Note>
+Asterisk uses the system's local time zone by default. Ensure your server's timezone is configured correctly:
+
+```bash
+timedatectl status
+sudo timedatectl set-timezone America/New_York
+```
+</Note>
+
+### Multiple Time Zones
+
+For organizations spanning time zones:
+
+```ini extensions.conf
+[entrantes-east]
+; Eastern timezone office
+exten => _995551XXX,1,Set(extension=${EXTEN:5})
+same => n,GotoIfTime(8:00-20:00,mon-fri,*,*?east-office,${extension},1)
+same => n,Playback(closed)
+same => n,Hangup()
+
+[entrantes-west]
+; Western timezone office
+exten => _995552XXX,1,Set(extension=${EXTEN:5})
+same => n,GotoIfTime(8:00-20:00,mon-fri,*,*?west-office,${extension},1)
+same => n,Playback(closed)
+same => n,Hangup()
+```
+
+## Emergency Override
+
+Allow emergency access outside business hours:
+
+```ini extensions.conf
+[entrantes]
+exten => _995554XXX,1,Set(extension=${EXTEN:5})
+; Check for emergency extension
+same => n,GotoIf($["${extension}" = "4911"]?emergency,s,1)
+; Normal business hours check
+same => n,GotoIfTime(8:00-20:00,mon-fri,*,*?empleado,${extension},1)
+same => n,Playback(closed)
+same => n,Hangup()
+
+[emergency]
+exten => s,1,NoOp(Emergency extension - always available)
+same => n,Dial(SIP/emergency-line)
+same => n,Hangup()
+```
+
+## Dynamic Business Hours
+
+For more complex scenarios, use Asterisk database (AstDB) or external scripts:
+
+```ini extensions.conf
+exten => _995554XXX,1,Set(extension=${EXTEN:5})
+same => n,Set(OPEN=${DB(hours/open)})
+same => n,GotoIf($["${OPEN}" = "yes"]?empleado,${extension},1)
+same => n,Playback(closed)
+same => n,Hangup()
+```
+
+Manually open/close:
+
+```
+CLI> database put hours open yes
+CLI> database put hours open no
+```
+
+## Debugging Time Conditions
+
+Add logging to understand matching:
+
+```ini extensions.conf
+exten => _995554XXX,1,Set(extension=${EXTEN:5})
+same => n,NoOp(Time check: ${STRFTIME(${EPOCH},,%Y-%m-%d %H:%M:%S)})
+same => n,NoOp(Day of week: ${STRFTIME(${EPOCH},,%A)})
+same => n,GotoIfTime(8:00-20:00,mon-fri,*,*?open:closed)
+same => n(closed),NoOp(Outside business hours)
+same => n,Playback(closed)
+same => n,Hangup()
+same => n(open),NoOp(During business hours)
+same => n,Goto(empleado,${extension},1)
+```
+
+<Warning>
+**Common Pitfalls:**
+- Time format must use 24-hour clock (e.g., `14:00`, not `2:00 PM`)
+- Day abbreviations are three letters: `mon`, `tue`, `wed`, `thu`, `fri`, `sat`, `sun`
+- Month abbreviations are three letters: `jan`, `feb`, `mar`, etc.
+- Wildcards (`*`) must be used for "any" value
+</Warning>
+
+## Next Steps
+
+- Configure [Call Queues](/features/call-queues) with different hours for various departments
+- Set up [External Calls](/features/external-calls) routing with time-based rules
+- Implement [Logging](/features/logging) to track off-hours call attempts

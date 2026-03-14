@@ -1,0 +1,114 @@
+---
+title: 'PBX Interconnection Overview'
+description: 'Learn how to interconnect multiple Asterisk PBX systems using the DUNDi protocol'
+---
+
+## Overview
+
+Interconnecting multiple PBX systems allows organizations to create a distributed telephony network where users from different PBX systems can communicate seamlessly. This is particularly useful for:
+
+- **Multi-site organizations**: Connect branch offices to a central PBX
+- **Departmental PBX systems**: Allow different departments to maintain their own PBX while enabling inter-department calling
+- **Load distribution**: Distribute call load across multiple servers
+- **Geographic redundancy**: Maintain service continuity across different locations
+
+## What is DUNDi?
+
+[DUNDi](http://www.dundi.info/) (Distributed Universal Number Discovery) is a peer-to-peer protocol for sharing dialplan information between multiple Asterisk systems. It's similar to [ENUM](https://en.wikipedia.org/wiki/Telephone_number_mapping) but designed specifically for VoIP routing.
+
+### Key Features
+
+- **Dialplan sharing**: Share extension information between PBX systems
+- **Decentralized architecture**: No single point of failure
+- **Secure communication**: Uses RSA key-based authentication
+- **SIP protocol**: Call routing continues to use SIP for actual voice traffic
+
+## Requirements
+
+Before setting up PBX interconnection, ensure you have:
+
+### Network Requirements
+
+- **Network connectivity**: Both PBX systems must be able to reach each other over the network
+- **Firewall configuration**: Open necessary ports for DUNDi (default port 4520) and SIP (default port 5060)
+- **Static IP addresses**: Both systems should have static IPs or reliable DNS names
+
+### System Requirements
+
+- **Asterisk installation**: Working Asterisk installations on both systems
+- **Key generation tools**: The `astgenkey` utility (included with Asterisk)
+- **SSH access**: For copying public keys between systems
+
+### Configuration Files
+
+You'll need to configure the following files:
+
+- `dundi.conf` - DUNDi protocol configuration
+- `extensions.conf` - Dialplan modifications for DUNDi routing
+- `sip.conf` - SIP peer configuration
+
+## Network Topology Example
+
+```
+┌─────────────────────┐                    ┌─────────────────────┐
+│   PBX 180           │                    │   PBX 200           │
+│                     │                    │                     │
+│  IP: 192.168.1.180  │◄──────DUNDi──────►│  IP: 192.168.1.200  │
+│                     │                    │                     │
+│  Extensions:        │                    │  Extensions:        │
+│  - javier (4000)    │                    │  - manuel (2000)    │
+│  - belen (4001)     │                    │  - maria (2001)     │
+└─────────────────────┘                    └─────────────────────┘
+```
+
+## Prerequisites Checklist
+
+Before proceeding with the configuration:
+
+<Steps>
+  <Step title="Verify Network Connectivity">
+    Test that both PBX systems can ping each other:
+    ```bash
+    ping -c 3 192.168.1.200
+    ```
+  </Step>
+  
+  <Step title="Identify MAC Addresses">
+    You'll need the MAC address of each PBX's network interface:
+    ```bash
+    ip a
+    ```
+    Look for the `ether` field in the output.
+  </Step>
+  
+  <Step title="Document Extension Ranges">
+    Determine which extension ranges each PBX will handle:
+    - PBX180: 4XXX extensions
+    - PBX200: 2XXX extensions
+  </Step>
+  
+  <Step title="Backup Configuration Files">
+    Always backup your configuration before making changes:
+    ```bash
+    cd /etc/asterisk
+    sudo cp dundi.conf dundi.conf.bck
+    sudo cp extensions.conf extensions.conf.bck
+    sudo cp sip.conf sip.conf.bck
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  This tutorial uses a cloned virtual machine setup where PBX180 (192.168.1.180) has users javier (4000) and belén (4001), while PBX200 (192.168.1.200) has users manuel (2000) and maría (2001). Both systems use the same context names for consistency.
+</Note>
+
+## Next Steps
+
+Once you've verified all requirements are met, proceed to the [DUNDi Protocol Configuration](/advanced/dundi-protocol) guide to set up the actual interconnection.
+
+## Security Considerations
+
+- **Key protection**: Keep private keys secure and never share them
+- **Network security**: Use VPN or encrypted tunnels for PBX interconnection over the Internet
+- **Access control**: Limit which extensions can make calls across PBX systems
+- **Monitoring**: Implement logging to track inter-PBX calls

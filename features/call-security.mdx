@@ -1,0 +1,220 @@
+---
+title: 'Call Security with TLS'
+description: 'Secure your Asterisk calls using TLS encryption for enhanced privacy and protection'
+---
+
+## Overview
+
+Securing communications is critical in any PBX system. This guide covers implementing TLS (Transport Layer Security) encryption in Asterisk to protect call signaling and ensure privacy.
+
+<Note>
+This implementation requires Asterisk to be compiled with TLS support enabled.
+</Note>
+
+## Generating TLS Certificates
+
+Asterisk provides the `ast_tls_cert` script to generate the necessary certificates for TLS encryption.
+
+<Steps>
+
+<Step title="Create keys directory">
+First, create a directory to store your certificates:
+
+```bash
+sudo mkdir /etc/asterisk/keys
+```
+</Step>
+
+<Step title="Generate Certificate Authority and Server Certificate">
+Use the `ast_tls_cert` script to create a self-signed Certificate Authority and Asterisk server certificate:
+
+```bash
+cd /usr/src/asterisk-15.7.1/contrib/scripts/
+sudo ./ast_tls_cert -C 192.168.1.180 -O "Tutorial Asterisk" -d /etc/asterisk/keys
+```
+
+**Parameters:**
+- `-C`: Your server's hostname or IP address
+- `-O`: Organization name
+- `-d`: Output directory for the certificates
+
+You'll be prompted to enter a passphrase. Remember this passphrase as you'll need it for generating client certificates.
+</Step>
+
+<Step title="Verify certificate generation">
+Check that the certificates were created successfully:
+
+```bash
+ls -l /etc/asterisk/keys/
+```
+
+You should see:
+- `ca.crt` - Certificate Authority certificate
+- `ca.key` - Certificate Authority private key
+- `asterisk.pem` - Asterisk server certificate
+</Step>
+
+<Step title="Generate client certificates">
+Create certificates for each SIP client that will use TLS:
+
+```bash
+sudo ./ast_tls_cert -m client -c /etc/asterisk/keys/ca.crt \
+  -k /etc/asterisk/keys/ca.key -C 192.168.1.180 \
+  -O "Tutorial Asterisk" -d /etc/asterisk/keys -o javier
+```
+
+**Parameters:**
+- `-m client`: Specifies this is a client certificate
+- `-c`: Path to the Certificate Authority certificate
+- `-k`: Path to the Certificate Authority private key
+- `-o`: Name for the output certificate files
+
+Enter the passphrase you created earlier when prompted.
+
+This generates:
+- `javier.crt` - Client certificate
+- `javier.pem` - Client certificate with private key (to be installed on the SIP client)
+</Step>
+
+</Steps>
+
+## Configuring Asterisk for TLS
+
+### sip.conf Configuration
+
+Edit `/etc/asterisk/sip.conf` to enable TLS support:
+
+```ini sip.conf
+[general]
+port=5060
+directmedia=no
+language=es
+tlsenable=yes
+tlsbindaddr=0.0.0.0
+tlscertfile=/etc/asterisk/keys/asterisk.pem
+tlscafile=/etc/asterisk/keys/ca.crt
+tlscipher=ALL
+tlsclientmethod=tlsv1
+
+[javier]
+type=friend
+secret=310195
+context=empleado
+host=dynamic
+canreinvite=no
+nat=force_rport,comedia
+callgroup=2
+pickupgroup=2
+transport=tls
+```
+
+**TLS Configuration Options:**
+- `tlsenable=yes` - Enable TLS support
+- `tlsbindaddr=0.0.0.0` - Bind to all interfaces
+- `tlscertfile` - Path to the server certificate
+- `tlscafile` - Path to the Certificate Authority certificate
+- `tlscipher=ALL` - Allow all cipher suites
+- `tlsclientmethod=tlsv1` - Use TLS version 1
+
+**Per-User Configuration:**
+- `transport=tls` - Force this user to use TLS transport
+
+### Reload SIP Configuration
+
+```
+CLI> sip reload
+```
+
+## Verifying TLS Configuration
+
+Check that TLS is enabled and listening:
+
+```
+CLI> sip show tcp
+```
+
+View the allowed transport methods for a specific peer:
+
+```
+CLI> sip show peer javier
+```
+
+Users configured with TLS will show "TLS" as an allowed transport, while users without certificates will show "UDP".
+
+## Configuring SIP Clients
+
+<Steps>
+
+<Step title="Transfer certificates to client">
+Copy the `.pem` file to your SIP client device:
+- `javier.pem` contains both the certificate and private key
+</Step>
+
+<Step title="Configure SIP client">
+In your SIP client software (e.g., Blink, Linphone, etc.):
+
+1. Set the transport protocol to **TLS**
+2. Set the server port to **5061** (standard TLS SIP port)
+3. Import the `.pem` certificate file
+4. Configure the server address and credentials as usual
+</Step>
+
+<Step title="Test the connection">
+Register the client and verify the TLS connection:
+
+```
+CLI> sip show peers
+```
+
+Look for the connection showing TLS as the transport method.
+</Step>
+
+</Steps>
+
+## Security Best Practices
+
+<Warning>
+**Important Security Considerations:**
+- Use strong passphrases for Certificate Authority keys
+- Store private keys securely with appropriate file permissions
+- Consider using certificates from a trusted Certificate Authority for production environments
+- Regularly rotate certificates and keys
+- Use TLS 1.2 or higher when possible
+</Warning>
+
+### File Permissions
+
+Ensure proper permissions on certificate files:
+
+```bash
+sudo chmod 600 /etc/asterisk/keys/*.key
+sudo chmod 644 /etc/asterisk/keys/*.crt
+sudo chown asterisk:asterisk /etc/asterisk/keys/*
+```
+
+## Troubleshooting
+
+### Common Issues
+
+**Certificate verification failures:**
+- Ensure the Certificate Authority certificate matches between server and client
+- Verify the server hostname/IP matches the certificate
+- Check that certificate files have correct permissions
+
+**Connection failures:**
+- Verify TLS is enabled in both server and client configuration
+- Check firewall rules allow port 5061 (TLS SIP)
+- Review Asterisk logs for detailed error messages:
+  ```bash
+  tail -f /var/log/asterisk/messages
+  ```
+
+**Mixed transport issues:**
+- Ensure users requiring TLS have `transport=tls` set
+- Verify clients without TLS support can still connect via UDP if needed
+
+## Next Steps
+
+- Configure [Business Hours](/features/business-hours) to control when calls are accepted
+- Set up [Call Queues](/features/call-queues) for distributing incoming calls
+- Implement [Logging](/features/logging) to monitor TLS connections

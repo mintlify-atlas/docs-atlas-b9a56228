@@ -1,0 +1,91 @@
+---
+title: SSH Setup
+description: Configure SSH access to your Asterisk server for remote management
+---
+
+## Installing OpenSSH
+
+To install OpenSSH on your Debian server, run:
+
+```shell
+sudo apt-get install openssh-server
+```
+
+## Finding Your Server IP
+
+To check the IP address of your machine:
+
+```shell
+ip address
+```
+
+This will display your network interfaces and their assigned IP addresses.
+
+## Configuring SSH
+
+Edit the SSH configuration file to set the listening port and IP address:
+
+```shell
+sudo nano /etc/ssh/sshd_config
+```
+
+Configure the following settings:
+
+```conf
+Port 22
+#AddressFamily any
+#ListenAddress 0.0.0.0
+ListenAddress 192.168.1.180
+```
+
+Replace `192.168.1.180` with your server's static IP address.
+
+## Managing the SSH Service
+
+<Steps>
+  <Step title="Start SSH">
+    ```shell
+    sudo /etc/init.d/ssh start
+    ```
+  </Step>
+
+  <Step title="Stop SSH">
+    ```shell
+    sudo /etc/init.d/ssh stop
+    ```
+  </Step>
+
+  <Step title="Restart SSH">
+    ```shell
+    sudo /etc/init.d/ssh restart
+    ```
+  </Step>
+
+  <Step title="Check Status">
+    ```shell
+    sudo /etc/init.d/ssh status
+    ```
+  </Step>
+</Steps>
+
+## Verifying the Connection
+
+Confirm that SSH is running:
+
+```shell
+ps ax | grep sshd
+```
+
+You should see the sshd process in the output.
+
+## Connecting from a Client
+
+You can now connect to your Asterisk server using any SSH client (such as PuTTY, MobaXterm, or the built-in SSH command on Linux/Mac):
+
+```shell
+ssh username@192.168.1.180
+```
+
+<Warning>
+  Make sure your firewall allows incoming connections on port 22, or whichever port you configured for SSH.
+</Warning>

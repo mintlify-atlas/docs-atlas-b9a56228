@@ -1,0 +1,449 @@
+---
+title: "sip.conf Configuration"
+description: "Complete guide to configuring SIP channels in Asterisk"
+---
+
+# sip.conf Configuration
+
+The `sip.conf` file is the primary configuration file for SIP (Session Initiation Protocol) channel drivers in Asterisk. It defines SIP endpoints, authentication, network settings, and protocol behavior.
+
+## File Location
+
+```
+/etc/asterisk/sip.conf
+```
+
+## Configuration Structure
+
+The configuration file consists of:
+- **[general]** section - Global SIP settings
+- **[authentication]** section - Authentication credentials
+- **Device/peer definitions** - Individual SIP endpoints
+- **Templates** - Reusable configuration blocks
+
+## [general] Section
+
+The general section contains global SIP channel driver settings.
+
+### Basic Network Settings
+
+```ini
+[general]
+port=5060
+directmedia=no
+language=es
+context=public
+allowoverlap=no
+udpbindaddr=0.0.0.0
+tcpenable=no
+tcpbindaddr=0.0.0.0
+transport=udp
+srvlookup=yes
+```
+
+<ParamField path="port" type="integer" default="5060">
+  UDP port number for SIP connections
+</ParamField>
+
+<ParamField path="directmedia" type="boolean" default="yes">
+  Allow direct RTP media between endpoints. Set to `no` to force media through Asterisk server
+</ParamField>
+
+<ParamField path="language" type="string" default="en">
+  Default language for prompts and announcements (e.g., "es", "en", "fr")
+</ParamField>
+
+<ParamField path="context" type="string" default="default">
+  Default dialplan context for incoming calls from unmatched peers
+</ParamField>
+
+<ParamField path="allowoverlap" type="boolean" default="yes">
+  Enable or disable overlap dialing support
+</ParamField>
+
+<ParamField path="udpbindaddr" type="string" default="0.0.0.0">
+  IP address to bind UDP socket. Use `0.0.0.0` to bind to all interfaces
+</ParamField>
+
+<ParamField path="tcpenable" type="boolean" default="no">
+  Enable TCP transport for SIP
+</ParamField>
+
+<ParamField path="tcpbindaddr" type="string" default="0.0.0.0">
+  IP address for TCP server binding
+</ParamField>
+
+<ParamField path="transport" type="string" default="udp">
+  Default transport protocol: `udp`, `tcp`, `tls`, or `ws`
+</ParamField>
+
+<ParamField path="srvlookup" type="boolean" default="yes">
+  Enable DNS SRV record lookups for outbound calls
+</ParamField>
+
+### TLS/Encryption Settings
+
+```ini
+tlsenable=yes
+tlsbindaddr=0.0.0.0
+tlscertfile=/etc/asterisk/keys/asterisk.pem
+tlscafile=/etc/asterisk/keys/ca.crt
+tlscipher=ALL
+tlsclientmethod=tlsv1
+```
+
+<ParamField path="tlsenable" type="boolean" default="no">
+  Enable TLS transport for secure SIP connections
+</ParamField>
+
+<ParamField path="tlsbindaddr" type="string" default="0.0.0.0">
+  IP address to bind TLS socket
+</ParamField>
+
+<ParamField path="tlscertfile" type="path">
+  Path to TLS certificate file (PEM format)
+</ParamField>
+
+<ParamField path="tlscafile" type="path">
+  Path to Certificate Authority file
+</ParamField>
+
+<ParamField path="tlscipher" type="string" default="ALL">
+  Cipher suite for TLS connections
+</ParamField>
+
+<ParamField path="tlsclientmethod" type="string">
+  TLS protocol version: `tlsv1`, `tlsv1_1`, `tlsv1_2`
+</ParamField>
+
+### Message Support Settings
+
+```ini
+accept_outofcall_message=yes
+outofcall_message_context=mensajes
+auth_message_requests=yes
+subscribecontext=suscribir
+```
+
+<ParamField path="accept_outofcall_message" type="boolean" default="no">
+  Accept SIP MESSAGE requests outside of active calls
+</ParamField>
+
+<ParamField path="outofcall_message_context" type="string">
+  Dialplan context for handling out-of-call messages
+</ParamField>
+
+<ParamField path="auth_message_requests" type="boolean" default="yes">
+  Require authentication for MESSAGE requests
+</ParamField>
+
+<ParamField path="subscribecontext" type="string">
+  Context for SIP SUBSCRIBE/NOTIFY presence events
+</ParamField>
+
+## Device Definitions
+
+Each SIP device is defined in its own section with authentication and connection parameters.
+
+### Basic Friend Configuration
+
+```ini
+[javier]
+type=friend
+secret=310195
+context=empleado
+host=dynamic
+canreinvite=no
+nat=force_rport,comedia
+callgroup=2
+pickupgroup=2
+transport=tls
+```
+
+<ParamField path="type" type="string" required>
+  Endpoint type:
+  - `friend` - Can make and receive calls (most common)
+  - `peer` - Can only receive calls from this IP
+  - `user` - Can only make calls (authenticated by username)
+</ParamField>
+
+<ParamField path="secret" type="string">
+  Password for SIP authentication
+</ParamField>
+
+<ParamField path="context" type="string" required>
+  Dialplan context where calls from this device are handled
+</ParamField>
+
+<ParamField path="host" type="string" required>
+  - `dynamic` - Device registers with Asterisk (IP changes)
+  - IP address - Static IP for the device
+</ParamField>
+
+<ParamField path="canreinvite" type="boolean" default="yes">
+  Allow SIP re-INVITE for direct media. Use `no` to keep media through server
+</ParamField>
+
+<ParamField path="nat" type="string">
+  NAT traversal settings:
+  - `force_rport` - Always use source port for responses
+  - `comedia` - Use media source address from RTP packets
+  - Combine with comma: `force_rport,comedia`
+</ParamField>
+
+<ParamField path="callgroup" type="string">
+  Call group(s) this device belongs to (for group dialing)
+</ParamField>
+
+<ParamField path="pickupgroup" type="string">
+  Call groups this device can pickup with directed pickup
+</ParamField>
+
+<ParamField path="transport" type="string">
+  Override default transport for this device: `udp`, `tcp`, `tls`
+</ParamField>
+
+### Multiple Device Example
+
+```ini
+[belen]
+type=friend
+secret=120995
+context=empleado
+host=dynamic
+canreinvite=no
+nat=force_rport,comedia
+callgroup=2
+pickupgroup=2
+
+[director]
+type=friend
+secret=130261
+context=direccion
+host=dynamic
+canreinvite=no
+nat=force_rport,comedia
+callgroup=1
+pickupgroup=1,2
+```
+
+The director can pickup calls from both group 1 and group 2.
+
+### DUNDi Peer Configuration
+
+```ini
+[priv]
+type=peer
+context=dundi-priv-local
+disallow=all
+allow=ilbc
+```
+
+This creates a peer for DUNDi distributed dialing with specific codec restrictions.
+
+## Configuration Templates
+
+Templates allow reusable configuration blocks using the `(!)` syntax.
+
+### Template Definition
+
+```ini
+[basic-options](!)                ; Template marker
+    dtmfmode=rfc2833
+    context=from-office
+    type=friend
+```
+
+<ParamField path="(!)" type="marker">
+  Marks a section as a template that can be inherited by other sections
+</ParamField>
+
+### Template Inheritance
+
+```ini
+[natted-phone](!,basic-options)   ; Inherits basic-options
+    directmedia=no
+    host=dynamic
+
+[public-phone](!,basic-options)   ; Also inherits basic-options
+    directmedia=yes
+```
+
+The `(!,template_name)` syntax inherits all settings from the named template.
+
+### Codec Templates
+
+```ini
+[my-codecs](!)                    ; Codec preferences template
+    disallow=all
+    allow=ilbc
+    allow=g729
+    allow=gsm
+    allow=g723
+    allow=ulaw
+
+[ulaw-phone](!)                   ; ulaw-only template
+    disallow=all
+    allow=ulaw
+```
+
+<ParamField path="disallow" type="string">
+  Disable specific codecs or `all` to disable all codecs
+</ParamField>
+
+<ParamField path="allow" type="string">
+  Enable specific codec. Multiple `allow` lines define codec preference order
+</ParamField>
+
+## Common Codec Options
+
+| Codec | Description | Bandwidth |
+|-------|-------------|----------|
+| `ulaw` | G.711 μ-law | 64 kbps |
+| `alaw` | G.711 A-law | 64 kbps |
+| `gsm` | GSM | 13 kbps |
+| `g729` | G.729A | 8 kbps |
+| `g723` | G.723.1 | 5.3-6.3 kbps |
+| `ilbc` | iLBC | 13.3-15.2 kbps |
+| `opus` | Opus | Variable |
+
+## DTMF Configuration
+
+<ParamField path="dtmfmode" type="string" default="rfc2833">
+  DTMF signaling method:
+  - `rfc2833` - RTP events (recommended)
+  - `inband` - Audio tones
+  - `info` - SIP INFO messages
+  - `auto` - Automatic detection
+</ParamField>
+
+## Complete Example
+
+Here's a complete `sip.conf` with multiple device types:
+
+```ini
+[general]
+port=5060
+directmedia=no
+language=es
+context=public
+allowoverlap=no
+udpbindaddr=0.0.0.0
+tcpenable=no
+transport=udp
+srvlookup=yes
+tlsenable=yes
+tlsbindaddr=0.0.0.0
+tlscertfile=/etc/asterisk/keys/asterisk.pem
+tlscafile=/etc/asterisk/keys/ca.crt
+accept_outofcall_message=yes
+outofcall_message_context=mensajes
+auth_message_requests=yes
+subscribecontext=suscribir
+
+[authentication]
+
+; Employee devices
+[javier]
+type=friend
+secret=310195
+context=empleado
+host=dynamic
+canreinvite=no
+nat=force_rport,comedia
+callgroup=2
+pickupgroup=2
+transport=tls
+
+[belen]
+type=friend
+secret=120995
+context=empleado
+host=dynamic
+canreinvite=no
+nat=force_rport,comedia
+callgroup=2
+pickupgroup=2
+
+; Management
+[director]
+type=friend
+secret=130261
+context=direccion
+host=dynamic
+canreinvite=no
+nat=force_rport,comedia
+callgroup=1
+pickupgroup=1,2
+
+; External callers
+[exterior]
+type=friend
+secret=123456
+context=entrantes
+host=dynamic
+canreinvite=no
+nat=force_rport,comedia
+
+; DUNDi peer
+[priv]
+type=peer
+context=dundi-priv-local
+disallow=all
+allow=ilbc
+```
+
+## Testing SIP Configuration
+
+After editing `sip.conf`, reload the configuration:
+
+```bash
+asterisk -rx "sip reload"
+```
+
+Verify SIP peers:
+
+```bash
+asterisk -rx "sip show peers"
+asterisk -rx "sip show peer javier"
+```
+
+## Security Best Practices
+
+1. **Use strong passwords** - Avoid simple numeric passwords
+2. **Enable TLS** - Encrypt SIP signaling when possible
+3. **Restrict contexts** - Use specific contexts per device type
+4. **NAT configuration** - Properly configure NAT for external devices
+5. **Disable unused features** - Only enable features you need
+6. **Limit codec options** - Reduce attack surface with specific codecs
+
+## Troubleshooting
+
+### Device Not Registering
+
+Check registration status:
+```bash
+asterisk -rx "sip show registry"
+```
+
+Verify network connectivity and NAT settings in device and `sip.conf`.
+
+### No Audio / One-Way Audio
+
+Common causes:
+- NAT/firewall issues - Check `nat=` settings
+- Codec mismatch - Verify allowed codecs match on both sides
+- `directmedia` issues - Try setting `directmedia=no`
+
+### Authentication Failures
+
+Verify:
+- Username matches section name
+- Password (secret) matches on device
+- Device type is `friend` or `user`
+
+## Related Configuration
+
+- [extensions.conf](/config/extensions-conf) - Dialplan routing
+- [voicemail.conf](/config/voicemail-conf) - Voicemail integration
+- [queues.conf](/config/queues-conf) - Call queue members

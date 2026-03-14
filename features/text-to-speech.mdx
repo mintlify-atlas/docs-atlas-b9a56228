@@ -1,0 +1,444 @@
+---
+title: Text-to-Speech with Festival
+description: Configure Festival TTS in Asterisk PBX to convert text to speech for automated announcements and IVR systems
+---
+
+# Text-to-Speech with Festival (Conversión de texto a voz)
+
+Festival is a free and open-source text-to-speech (TTS) system that can be integrated with Asterisk to generate voice prompts dynamically from text. This is commonly used for automated announcements, IVR systems, and dynamic information playback.
+
+<Note>
+  This implementation was done after integrating Asterisk with MariaDB.
+</Note>
+
+## Overview
+
+Festival TTS provides:
+- Dynamic text-to-speech conversion
+- Multiple language support (including Spanish)
+- Male and female voices
+- Real-time audio generation
+- Integration with Asterisk dialplan
+
+## Installation
+
+<Steps>
+
+### Install Festival
+
+```bash
+sudo apt-get install festival
+```
+
+### Stop Asterisk
+
+```bash
+sudo /etc/init.d/asterisk stop
+```
+
+### Configure Festival script
+
+Edit the Festival configuration file:
+
+```bash
+sudo vim /usr/share/festival/festival.scm
+```
+
+Add this function **before** the last line (`provide 'festival`):
+
+```scheme
+(define (tts_textasterisk string mode)
+  (let ((wholeutt (utt.synth (eval (list 'Utterance 'Text string)))))
+    (utt.wave.resample wholeutt 8000)
+    (utt.wave.rescale wholeutt 5)
+    (utt.wave.send.wave.client wholeutt)))
+```
+
+This function:
+- Synthesizes the text into an utterance
+- Resamples to 8000 Hz (telephony standard)
+- Rescales the volume
+- Sends the audio to the client
+
+### Reboot the system
+
+```bash
+sudo reboot
+```
+
+</Steps>
+
+## Creating a Festival Service
+
+<Steps>
+
+### Create systemd service file
+
+```bash
+sudo vim /etc/systemd/system/festival.service
+```
+
+Add the following content:
+
+```ini
+[Unit]
+Description=Servicio para Festival TTS
+Wants=network.target
+After=syslog.target network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/festival --server
+Restart=on-failure
+RestartSec=10
+KillMode=process
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### Reload systemd and enable service
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable festival.service
+```
+
+### Reboot and verify
+
+```bash
+sudo reboot
+```
+
+Check service status:
+
+```bash
+sudo systemctl status festival.service
+```
+
+You should see:
+```
+● festival.service - Servicio para Festival TTS
+   Loaded: loaded (/etc/systemd/system/festival.service; enabled)
+   Active: active (running)
+```
+
+### Service management commands
+
+```bash
+sudo systemctl start festival.service
+sudo systemctl stop festival.service
+sudo systemctl status festival.service
+```
+
+</Steps>
+
+## Spanish Voices Installation
+
+<Steps>
+
+### Download Spanish voices
+
+The voices are from Junta de Andalucía:
+
+```bash
+cd /home/your-user/archivos
+wget https://github.com/franjvasquezg/festival-spanish-voices/archive/master.zip
+unzip master.zip
+cd festival-spanish-voices-master/
+```
+
+### Install voices
+
+Create Spanish voices directory:
+
+```bash
+sudo mkdir /usr/share/festival/voices/spanish
+```
+
+Copy voice files:
+
+```bash
+sudo cp -r JuntaDeAndalucia_es_* /usr/share/festival/voices/spanish/
+```
+
+### Verify installation
+
+```bash
+ls -l /usr/share/festival/voices/spanish/
+```
+
+You should see:
+- `JuntaDeAndalucia_es_pa_diphone` - Male voice
+- `JuntaDeAndalucia_es_sf_diphone` - Female voice
+
+### Set default voice
+
+Edit Festival configuration:
+
+```bash
+sudo vim /etc/festival.scm
+```
+
+Add at the end:
+
+```scheme
+(set! voice_default 'voice_JuntaDeAndalucia_es_sf_diphone)
+```
+
+This sets the female voice as default. For male voice, use:
+```scheme
+(set! voice_default 'voice_JuntaDeAndalucia_es_pa_diphone)
+```
+
+### Restart Festival service
+
+```bash
+sudo systemctl restart festival.service
+```
+
+</Steps>
+
+## Asterisk Integration
+
+<Steps>
+
+### Enable Festival module
+
+Navigate to Asterisk source:
+
+```bash
+cd /usr/src/asterisk-15.7.1/
+sudo make menuselect
+```
+
+In the menu:
+1. Go to **Applications**
+2. Select **app_festival** (under Extended)
+3. Save and exit
+
+### Install the module
+
+```bash
+sudo make install
+```
+
+### Start Asterisk
+
+```bash
+sudo /etc/init.d/asterisk start
+```
+
+### Verify Festival application
+
+From Asterisk CLI:
+
+```bash
+sudo asterisk -rvvvvvvc
+```
+
+Check the application:
+
+```
+CLI> core show application festival
+```
+
+You should see application details. If not loaded:
+
+```
+CLI> module load app_festival.so
+CLI> module show app_festival.so
+```
+
+</Steps>
+
+## Dialplan Configuration
+
+### Add Festival to extensions.conf
+
+Edit the dial plan:
+
+```bash
+sudo vim /etc/asterisk/extensions.conf
+```
+
+Add TTS to an extension:
+
+```ini
+[empleado]
+;-----centralita
+exten => 100,1,NoOp(Centralita de distribucion de llamadas)
+same => n,NoOp(Esta llamando ${ODBC_info(${CALLERID(number)})})
+same => n,Festival(Va a escuchar un fragmento de la primavera de Antonio Vivaldi)
+same => n,Playback(silence/1)
+same => n,Playback(mimusica/primavera)
+same => n,Hangup()
+```
+
+### Reload dial plan
+
+```
+CLI> dialplan reload
+```
+
+## Usage Examples
+
+### Simple announcement
+
+```ini
+exten => 200,1,Answer()
+same => n,Festival(Bienvenido al sistema de asterisk)
+same => n,Hangup()
+```
+
+### Dynamic information
+
+```ini
+exten => 201,1,Answer()
+same => n,Set(CALLER=${CALLERID(name)})
+same => n,Festival(Hola ${CALLER}, gracias por llamar)
+same => n,Hangup()
+```
+
+### Time announcement
+
+```ini
+exten => 202,1,Answer()
+same => n,Set(HORA=${STRFTIME(${EPOCH},,%H:%M)})
+same => n,Festival(La hora actual es ${HORA})
+same => n,Hangup()
+```
+
+### Error messages
+
+```ini
+exten => _4XXX,1,Answer()
+same => n,Festival(La extension ${EXTEN} no se encuentra disponible)
+same => n,Hangup()
+```
+
+## Testing
+
+Call extension 100 from a SIP phone:
+
+1. You hear: "Va a escuchar un fragmento de la primavera de Antonio Vivaldi"
+2. One second silence
+3. Music plays
+4. Call ends
+
+Asterisk console shows:
+
+```
+-- Executing [100@empleado:1] NoOp("SIP/javier-00000001", "Centralita de distribucion de llamadas")
+-- Executing [100@empleado:2] NoOp("SIP/javier-00000001", "Esta llamando javier")
+-- Executing [100@empleado:3] Festival("SIP/javier-00000001", "Va a escuchar un fragmento de la primavera de Antonio Vivaldi")
+-- Executing [100@empleado:4] Playback("SIP/javier-00000001", "silence/1")
+-- Executing [100@empleado:5] Playback("SIP/javier-00000001", "mimusica/primavera")
+```
+
+## Advanced Configuration
+
+### Festival server settings
+
+Edit Asterisk Festival configuration:
+
+```bash
+sudo vim /etc/asterisk/festival.conf
+```
+
+```ini
+[general]
+host=localhost
+port=1314
+usecache=yes
+cachedir=/var/lib/asterisk/festivalcache/
+```
+
+### Performance optimization
+
+Create cache directory:
+
+```bash
+sudo mkdir -p /var/lib/asterisk/festivalcache
+sudo chown asterisk:asterisk /var/lib/asterisk/festivalcache
+```
+
+Caching improves performance by storing generated audio files.
+
+## Voice Selection
+
+To use different voices in the dial plan, you can specify:
+
+```scheme
+; In festival.scm or via Festival commands
+(voice_JuntaDeAndalucia_es_pa_diphone)  ; Male
+(voice_JuntaDeAndalucia_es_sf_diphone)  ; Female
+```
+
+## Troubleshooting
+
+### Festival not responding
+
+Check if Festival is running:
+
+```bash
+sudo systemctl status festival.service
+ps aux | grep festival
+```
+
+Check Festival is listening:
+
+```bash
+netstat -an | grep 1314
+```
+
+### Audio quality issues
+
+- Check sample rate in festival.scm (should be 8000 Hz)
+- Verify audio rescaling (wholeutt 5)
+- Test with different voices
+
+### Module not loading
+
+Verify module exists:
+
+```bash
+ls -l /usr/lib/asterisk/modules/app_festival.so
+```
+
+Check module dependencies:
+
+```
+CLI> module show like festival
+```
+
+### Spanish voice not working
+
+Verify voice files:
+
+```bash
+ls -l /usr/share/festival/voices/spanish/
+```
+
+Check festival.scm configuration:
+
+```bash
+grep voice_default /etc/festival.scm
+```
+
+## Limitations
+
+- Speech quality is synthetic (not as natural as recorded audio)
+- Processing adds latency to call flow
+- Limited emotion and intonation
+- Better for simple announcements than complex content
+- Spanish voices may have pronunciation issues with technical terms
+
+## Best Practices
+
+1. **Use for dynamic content** - Use Festival for variable information, recorded audio for static messages
+2. **Keep text simple** - Short, clear phrases work best
+3. **Cache frequently used phrases** - Enable caching for better performance
+4. **Test pronunciation** - Verify proper pronunciation before production
+5. **Provide alternatives** - Offer DTMF options for users who prefer not to wait for TTS
+6. **Monitor performance** - TTS can impact system resources under load
