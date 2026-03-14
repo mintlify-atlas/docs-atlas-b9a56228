@@ -1,0 +1,123 @@
+{
+  "projectType": "general",
+  "projectName": "Asterisk PBX Tutorial",
+  "projectDescription": "Comprehensive guide for installing, configuring, and deploying Asterisk PBX systems with advanced telephony features",
+  "theme": "aspen",
+  "primaryColor": "#ee7924",
+  "lightColor": "#8e7a69",
+  "darkColor": "#dcd5cc",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Tutorial",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "nomenclature",
+              "technical-requirements"
+            ]
+          },
+          {
+            "group": "Installation",
+            "pages": [
+              "installation/ssh-setup",
+              "installation/static-ip",
+              "installation/asterisk-installation",
+              "installation/creating-users",
+              "installation/language-setup",
+              "installation/testing"
+            ]
+          },
+          {
+            "group": "PBX Features",
+            "pages": [
+              "features/voicemail",
+              "features/call-transfer",
+              "features/sip-messages",
+              "features/call-groups",
+              "features/call-pickup",
+              "features/text-to-speech",
+              "features/call-security",
+              "features/external-calls",
+              "features/business-hours",
+              "features/logging",
+              "features/call-queues"
+            ]
+          },
+          {
+            "group": "Database Integration",
+            "pages": [
+              "database/mariadb-setup",
+              "database/odbc-connector",
+              "database/asterisk-connection",
+              "database/testing"
+            ]
+          },
+          {
+            "group": "Advanced Topics",
+            "pages": [
+              "advanced/pbx-interconnection",
+              "advanced/dundi-protocol",
+              "advanced/call-center-implementation"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "reference/softphones",
+              "reference/troubleshooting",
+              "reference/configuration-files"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Configuration",
+        "groups": [
+          {
+            "group": "Configuration Files",
+            "pages": [
+              "config/sip-conf",
+              "config/extensions-conf",
+              "config/voicemail-conf",
+              "config/queues-conf",
+              "config/dundi-conf"
+            ]
+          },
+          {
+            "group": "Examples",
+            "pages": [
+              "examples/basic-setup",
+              "examples/call-center",
+              "examples/multi-pbx"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Voicemail and voice messaging",
+    "Call distribution and queuing",
+    "Text-to-speech with Festival",
+    "SIP message center",
+    "Call pickup and transfer",
+    "TLS/SSL encryption for secure calls",
+    "MariaDB database integration",
+    "Multi-PBX interconnection with DUNDi",
+    "Business hours configuration",
+    "Call center implementation"
+  ],
+  "publicApiSurface": [
+    "sip.conf - SIP protocol configuration",
+    "extensions.conf - Dialplan and routing",
+    "voicemail.conf - Voicemail settings",
+    "queues.conf - Call queue management",
+    "dundi.conf - DUNDi protocol for PBX interconnection",
+    "func_odbc.conf - Database functions",
+    "musiconhold.conf - Hold music configuration",
+    "logger.conf - Logging configuration"
+  ]
+}
